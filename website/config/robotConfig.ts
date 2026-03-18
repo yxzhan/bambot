@@ -46,7 +46,7 @@ export type RobotConfig = {
 // Only so-arm100 robot is kept
 export const robotConfigMap: { [key: string]: RobotConfig } = {
   "so-arm100": {
-    urdfUrl: "/URDFs/so101.urdf",
+    urdfUrl: "../URDFs/so101.urdf",
     image: "/so-arm100.jpg",
     assembleLink: "/assemble/so-101",
     camera: { position: [-30, 10, 30], fov: 12 },
