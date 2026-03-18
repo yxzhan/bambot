@@ -36,33 +36,17 @@ export default function Header() {
         <Link href="/">
             <img src="/favicon.ico" alt="BamBot Logo" className="w-8 h-8" />
         </Link>
-        <div className="flex  gap-4 items-center">
-          <button
-            onClick={handleBellClick}
-            className="relative"
-            title="Notifications"
-          >
-            <RiNotification2Line className="text-white w-5 h-5" />
-            {hasNew && (
-              <span className="absolute top-0 right-0 block h-2 w-2 rounded-full bg-red-500 ring-2 ring-zinc-800" />
-            )}
-          </button>
-          <div className="pt-2">
-            <a
-              className="github-button"
-              href="https://github.com/timqian/bambot"
-              // data-color-scheme="no-preference: light; light: light; dark: dark;"
-              data-size="large"
-              data-show-count="true"
-              aria-label="Star timqian/bambot on GitHub"
-            >
-              Star
-            </a>
-          </div>
-        </div>
+        <button
+          onClick={handleBellClick}
+          className="relative"
+          title="Notifications"
+        >
+          <RiNotification2Line className="text-white w-5 h-5" />
+          {hasNew && (
+            <span className="absolute top-0 right-0 block h-2 w-2 rounded-full bg-red-500 ring-2 ring-zinc-800" />
+          )}
+        </button>
       </header>
-      {/* Script for GitHub buttons */}
-      <Script async defer src="https://buttons.github.io/buttons.js" />
       <NotificationDialog
         open={showNotification}
         onOpenChange={setShowNotification}
