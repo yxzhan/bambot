@@ -15,7 +15,9 @@ import KeyboardControlButton from "../playground/controlButtons/KeyboardControlB
 import ChatControlButton from "../playground/controlButtons/ChatControlButton";
 import LeaderControlButton from "../playground/controlButtons/LeaderControlButton";
 import RecordButton from "./controlButtons/RecordButton";
+import WebcamButton from "./controlButtons/WebcamButton";
 import RecordControl from "./recordControl/RecordControl";
+import { WebcamPanel } from "./webcam/WebcamPanel";
 import {
   getPanelStateFromLocalStorage,
   setPanelStateToLocalStorage,
@@ -58,6 +60,9 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
   });
   const [showRecordControl, setShowRecordControl] = useState(() => {
     return getPanelStateFromLocalStorage("recordControl", robotName) ?? false;
+  });
+  const [showWebcamPanel, setShowWebcamPanel] = useState(() => {
+    return getPanelStateFromLocalStorage("webcamPanel", robotName) ?? false;
   });
   const config = robotConfigMap[robotName];
 
@@ -137,6 +142,14 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
     });
   };
 
+  const toggleWebcamPanel = () => {
+    setShowWebcamPanel((prev) => {
+      const newState = !prev;
+      setPanelStateToLocalStorage("webcamPanel", newState, robotName);
+      return newState;
+    });
+  };
+
   const hideControlPanel = () => {
     setShowControlPanel(false);
     setPanelStateToLocalStorage("keyboardControl", false, robotName);
@@ -155,6 +168,11 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
   const hideRecordControl = () => {
     setShowRecordControl(false);
     setPanelStateToLocalStorage("recordControl", false, robotName);
+  };
+
+  const hideWebcamPanel = () => {
+    setShowWebcamPanel(false);
+    setPanelStateToLocalStorage("webcamPanel", false, robotName);
   };
 
   return (
@@ -244,6 +262,12 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
         }}
       />
 
+      {/* Webcam Panel overlay */}
+      <WebcamPanel
+        show={showWebcamPanel}
+        onHide={hideWebcamPanel}
+      />
+
       <div className="absolute bottom-5 left-0 right-0">
         <div className="flex justify-center items-center">
           <div className="flex gap-2 max-w-md">
@@ -262,6 +286,10 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
             <RecordButton
               showControlPanel={showRecordControl}
               onToggleControlPanel={toggleRecordControl}
+            />
+            <WebcamButton
+              showControlPanel={showWebcamPanel}
+              onToggleControlPanel={toggleWebcamPanel}
             />
           </div>
         </div>

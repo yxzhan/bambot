@@ -6,6 +6,7 @@ type PanelStates = {
   leaderControl?: boolean;
   chatControl?: boolean;
   recordControl?: boolean;
+  webcamPanel?: boolean;
 };
 
 type RobotPanelSettings = {
@@ -47,4 +48,13 @@ export function setPanelStateToLocalStorage(
 export function getAllPanelStatesForRobot(robotName: string): PanelStates {
   const allSettings = getAllPanelSettings();
   return allSettings[robotName] || {};
+}
+
+// Helper to reset all panels for a robot
+export function resetPanelStateForRobot(robotName: string): void {
+  const allSettings = getAllPanelSettings();
+  if (allSettings[robotName]) {
+    delete allSettings[robotName];
+    saveAllPanelSettings(allSettings);
+  }
 }
