@@ -22,6 +22,7 @@ export function CameraPanel({
   const [closed, setClosed] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [position, setPosition] = useState({ x: 0, y: 70 });
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(null);
   const streamRefs = useRef<Map<string, MediaStream>>(new Map());
 
@@ -81,7 +82,8 @@ export function CameraPanel({
 
   return (
     <Rnd
-      position={{ x: 0, y: 70 }}
+      position={position}
+      onDragStop={(_, d) => setPosition({ x: d.x, y: d.y })}
       size={{ width: 400, height: 320 }}
       bounds="window"
       className="z-40"

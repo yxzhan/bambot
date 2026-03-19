@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { Html, useProgress } from "@react-three/drei";
 import { ControlPanel } from "./keyboardControl/KeyboardControl";
 import { useRobotControl } from "@/hooks/useRobotControl";
+import { useROS2 } from "@/hooks/useROS2";
 import { Canvas } from "@react-three/fiber";
 import { ChatControl } from "./chatControl/ChatControl";
 import LeaderControl from "../playground/leaderControl/LeaderControl";
@@ -18,6 +19,8 @@ import RecordButton from "./controlButtons/RecordButton";
 import WebcamButton from "./controlButtons/WebcamButton";
 import RecordControl from "./recordControl/RecordControl";
 import { CameraPanel } from "./cameraControl/CameraPanel";
+import ROS2Button from "./ros2Control/ROS2Button";
+import { ROS2Panel } from "./ros2Control/ROS2Panel";
 import {
   getPanelStateFromLocalStorage,
   setPanelStateToLocalStorage,
@@ -64,7 +67,18 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
   const [showWebcamPanel, setShowWebcamPanel] = useState(() => {
     return getPanelStateFromLocalStorage("webcamPanel", robotName) ?? false;
   });
+  const [showROS2Panel, setShowROS2Panel] = useState(() => {
+    return getPanelStateFromLocalStorage("ros2Panel", robotName) ?? false;
+  });
   const config = robotConfigMap[robotName];
+
+  const {
+    status: ros2Status,
+    error: ros2Error,
+    jointState: ros2JointState,
+    connect: connectROS2,
+    disconnect: disconnectROS2,
+  } = useROS2();
 
   // Get leader robot servo IDs (exclude continuous joint types)
   const leaderServoIds = jointDetails
@@ -175,6 +189,25 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
     setPanelStateToLocalStorage("webcamPanel", false, robotName);
   };
 
+  const toggleROS2Panel = () => {
+    setShowROS2Panel((prev) => {
+      const newState = !prev;
+      setPanelStateToLocalStorage("ros2Panel", newState, robotName);
+      if (newState) {
+        connectROS2();
+      } else {
+        disconnectROS2();
+      }
+      return newState;
+    });
+  };
+
+  const hideROS2Panel = () => {
+    setShowROS2Panel(false);
+    setPanelStateToLocalStorage("ros2Panel", false, robotName);
+    disconnectROS2();
+  };
+
   return (
     <>
       <Canvas
@@ -268,6 +301,17 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
         onHide={hideWebcamPanel}
       />
 
+      {/* ROS 2 Panel overlay */}
+      <ROS2Panel
+        show={showROS2Panel}
+        onHide={hideROS2Panel}
+        status={ros2Status}
+        error={ros2Error}
+        jointState={ros2JointState}
+        onConnect={connectROS2}
+        onDisconnect={disconnectROS2}
+      />
+
       <div className="absolute bottom-5 left-0 right-0">
         <div className="flex justify-center items-center">
           <div className="flex gap-2 max-w-md">
@@ -290,6 +334,10 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
             <WebcamButton
               showControlPanel={showWebcamPanel}
               onToggleControlPanel={toggleWebcamPanel}
+            />
+            <ROS2Button
+              showControlPanel={showROS2Panel}
+              onToggleControlPanel={toggleROS2Panel}
             />
           </div>
         </div>

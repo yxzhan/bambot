@@ -1,1 +1,1 @@
-/workspaces/binder-template/bambot/AGENTS.md
+./AGENTS.md
