@@ -4,21 +4,21 @@ import React, { useEffect, useRef, useState } from "react";
 import { Rnd } from "react-rnd";
 import { panelStyle } from "@/components/playground/panelStyle";
 
-type WebcamDevice = {
+type CameraDevice = {
   deviceId: string;
   label: string;
 };
 
-type WebcamPanelProps = {
+type CameraPanelProps = {
   show?: boolean;
   onHide: () => void;
 };
 
-export function WebcamPanel({
+export function CameraPanel({
   show = true,
   onHide,
-}: WebcamPanelProps) {
-  const [devices, setDevices] = useState<WebcamDevice[]>([]);
+}: CameraPanelProps) {
+  const [devices, setDevices] = useState<CameraDevice[]>([]);
   const [closed, setClosed] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

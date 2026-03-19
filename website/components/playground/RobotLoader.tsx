@@ -17,7 +17,7 @@ import LeaderControlButton from "../playground/controlButtons/LeaderControlButto
 import RecordButton from "./controlButtons/RecordButton";
 import WebcamButton from "./controlButtons/WebcamButton";
 import RecordControl from "./recordControl/RecordControl";
-import { WebcamPanel } from "./webcam/WebcamPanel";
+import { CameraPanel } from "./cameraControl/CameraPanel";
 import {
   getPanelStateFromLocalStorage,
   setPanelStateToLocalStorage,
@@ -262,8 +262,8 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
         }}
       />
 
-      {/* Webcam Panel overlay */}
-      <WebcamPanel
+      {/* Camera Panel overlay */}
+      <CameraPanel
         show={showWebcamPanel}
         onHide={hideWebcamPanel}
       />
