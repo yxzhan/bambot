@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, useRef, Suspense } from "react";
 import { robotConfigMap } from "@/config/robotConfig";
 import * as THREE from "three";
 import { Html, useProgress } from "@react-three/drei";
@@ -70,6 +70,7 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
   const [showROS2Panel, setShowROS2Panel] = useState(() => {
     return getPanelStateFromLocalStorage("ros2Panel", robotName) ?? false;
   });
+  const [rosControlEnabled, setRosControlEnabled] = useState(false);
   const config = robotConfigMap[robotName];
 
   const {
@@ -122,6 +123,35 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
   useEffect(() => {
     updateJointDetails(jointDetails);
   }, [jointDetails, updateJointDetails]);
+
+  const lastRosPositionRef = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!rosControlEnabled || !ros2JointState || jointDetails.length === 0) return;
+    if (ros2JointState.name.length === 0 || ros2JointState.position.length === 0) return;
+
+    const updates: { servoId: number; value: number }[] = [];
+
+    for (const joint of jointDetails) {
+      if (joint.jointType !== "revolute") continue;
+
+      const rosIndex = ros2JointState.name.indexOf(joint.name);
+      if (rosIndex === -1) continue;
+
+      const radians = ros2JointState.position[rosIndex];
+      const lastPos = lastRosPositionRef.current[joint.name] ?? 0;
+      if (Math.abs(radians - lastPos) < 0.001) continue;
+
+      lastRosPositionRef.current[joint.name] = radians;
+
+      const degrees = radians * (180 / Math.PI);
+      updates.push({ servoId: joint.servoId, value: degrees });
+    }
+
+    if (updates.length > 0) {
+      updateJointsDegrees(updates);
+    }
+  }, [ros2JointState, rosControlEnabled, jointDetails, updateJointsDegrees]);
 
   // Functions to handle panel state changes and localStorage updates
   const toggleControlPanel = () => {
@@ -194,7 +224,7 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
       const newState = !prev;
       setPanelStateToLocalStorage("ros2Panel", newState, robotName);
       if (newState) {
-        connectROS2();
+        connectROS2("ws://localhost:9090");
       } else {
         disconnectROS2();
       }
@@ -310,6 +340,8 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
         jointState={ros2JointState}
         onConnect={connectROS2}
         onDisconnect={disconnectROS2}
+        rosControlEnabled={rosControlEnabled}
+        onRosControlToggle={() => setRosControlEnabled((prev) => !prev)}
       />
 
       <div className="absolute bottom-5 left-0 right-0">

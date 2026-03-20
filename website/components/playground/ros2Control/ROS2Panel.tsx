@@ -15,6 +15,8 @@ type ROS2PanelProps = {
   jointState: RosJointState | null;
   onConnect: (url: string) => void;
   onDisconnect: () => void;
+  rosControlEnabled?: boolean;
+  onRosControlToggle?: () => void;
 };
 
 const DEFAULT_URL = "ws://localhost:9090";
@@ -27,6 +29,8 @@ export function ROS2Panel({
   jointState,
   onConnect,
   onDisconnect,
+  rosControlEnabled = false,
+  onRosControlToggle,
 }: ROS2PanelProps) {
   const [ref, bounds] = useMeasure();
   const [url, setUrl] = useState(DEFAULT_URL);
@@ -34,11 +38,7 @@ export function ROS2Panel({
 
   useEffect(() => {
     if (bounds.height > 0) {
-      setPosition((pos) => ({
-        ...pos,
-        x: 410,
-        y: 70,
-      }));
+      setPosition({ x: 20, y: 20 });
     }
   }, [bounds.height]);
 
@@ -91,6 +91,16 @@ export function ROS2Panel({
     if (e.key === "Enter" && status !== "connected" && status !== "connecting") {
       handleConnect();
     }
+  };
+
+  const formatTimestamp = (sec: number, nanosec: number) => {
+    const date = new Date(sec * 1000 + nanosec / 1_000_000);
+    return date.toLocaleTimeString(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      fractionalSecondDigits: 3,
+    });
   };
 
   return (
@@ -163,6 +173,22 @@ export function ROS2Panel({
           </div>
         )}
 
+        {status === "connected" && (
+          <div className="mb-3 flex items-center gap-2">
+            <label className="text-xs text-zinc-400">Control robot:</label>
+            <button
+              onClick={onRosControlToggle}
+              className={`text-xs px-2 py-1 rounded ${
+                rosControlEnabled
+                  ? "bg-green-700 text-green-200"
+                  : "bg-zinc-700 text-zinc-400"
+              }`}
+            >
+              {rosControlEnabled ? "Enabled" : "Disabled"}
+            </button>
+          </div>
+        )}
+
         {jointState && (
           <div className="max-h-[40vh] overflow-y-auto">
             <h5 className="text-sm font-semibold mb-2 text-zinc-300">Joint States</h5>
@@ -179,8 +205,7 @@ export function ROS2Panel({
             {jointState.header && (
               <div className="mt-3 pt-2 border-t border-zinc-700">
                 <p className="text-xs text-zinc-500">
-                  Time: {jointState.header.stamp.sec}.
-                  {String(jointState.header.stamp.nanosec).padStart(9, "0")}s
+                  Time: {formatTimestamp(jointState.header.stamp.sec, jointState.header.stamp.nanosec)}
                 </p>
               </div>
             )}
