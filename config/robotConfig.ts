@@ -45,9 +45,9 @@ export type RobotConfig = {
 // Define configuration map per slug
 // Only so-arm100 robot is kept
 export const robotConfigMap: { [key: string]: RobotConfig } = {
-  "so-arm100": {
+  "so-arm101": {
     urdfUrl: "../URDFs/so101.urdf",
-    image: "/so-arm100.jpg",
+    image: "../so-arm101.png",
     assembleLink: "/assemble/so-101",
     camera: { position: [-30, 10, 30], fov: 12 },
     orbitTarget: [1, 2, 0],
@@ -61,20 +61,20 @@ export const robotConfigMap: { [key: string]: RobotConfig } = {
     },
     // map between joint names in URDF and servo IDs
     jointNameIdMap: {
-      Rotation: 1,
-      Pitch: 2,
-      Elbow: 3,
-      Wrist_Pitch: 4,
-      Wrist_Roll: 5,
-      Jaw: 6,
+      shoulder_pan: 1,
+      shoulder_lift: 2,
+      elbow_flex: 3,
+      wrist_flex: 4,
+      wrist_roll: 5,
+      gripper: 6,
     },
     urdfInitJointAngles: {
-      Rotation: 180,
-      Pitch: 180,
-      Elbow: 180,
-      Wrist_Pitch: 180,
-      Wrist_Roll: 180,
-      Jaw: 180,
+      shoulder_pan: 180,
+      shoulder_lift: 180,
+      elbow_flex: 180,
+      wrist_flex: 180,
+      wrist_roll: 180,
+      gripper: 180,
     },
     compoundMovements: [
       // Jaw compound movements
