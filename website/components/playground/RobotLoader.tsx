@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { robotConfigMap } from "@/config/robotConfig";
 import * as THREE from "three";
 import { Html, useProgress } from "@react-three/drei";
@@ -50,6 +51,9 @@ function Loader() {
 }
 
 export default function RobotLoader({ robotName }: RobotLoaderProps) {
+  const searchParams = useSearchParams();
+  const ros2WsUrl = searchParams.get("ros2ws") ?? "ws://localhost:9090";
+
   const [jointDetails, setJointDetails] = useState<JointDetails[]>([]);
   const [showControlPanel, setShowControlPanel] = useState(() => {
     const stored = getPanelStateFromLocalStorage("keyboardControl", robotName);
@@ -224,7 +228,7 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
       const newState = !prev;
       setPanelStateToLocalStorage("ros2Panel", newState, robotName);
       if (newState) {
-        connectROS2("ws://localhost:9090");
+        connectROS2(ros2WsUrl);
       } else {
         disconnectROS2();
       }
@@ -342,6 +346,7 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
         onDisconnect={disconnectROS2}
         rosControlEnabled={rosControlEnabled}
         onRosControlToggle={() => setRosControlEnabled((prev) => !prev)}
+        defaultUrl={ros2WsUrl}
       />
 
       <div className="absolute bottom-5 left-0 right-0">

@@ -17,6 +17,7 @@ type ROS2PanelProps = {
   onDisconnect: () => void;
   rosControlEnabled?: boolean;
   onRosControlToggle?: () => void;
+  defaultUrl?: string;
 };
 
 const DEFAULT_URL = "ws://localhost:9090";
@@ -31,9 +32,10 @@ export function ROS2Panel({
   onDisconnect,
   rosControlEnabled = false,
   onRosControlToggle,
+  defaultUrl = DEFAULT_URL,
 }: ROS2PanelProps) {
   const [ref, bounds] = useMeasure();
-  const [url, setUrl] = useState(DEFAULT_URL);
+  const [url, setUrl] = useState(defaultUrl);
   const [position, setPosition] = useState({ x: 0, y: 70 });
 
   useEffect(() => {
