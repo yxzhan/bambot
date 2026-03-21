@@ -69,12 +69,12 @@ export const robotConfigMap: { [key: string]: RobotConfig } = {
       gripper: 6,
     },
     urdfInitJointAngles: {
-      shoulder_pan: 180,
-      shoulder_lift: 180,
-      elbow_flex: 180,
-      wrist_flex: 180,
-      wrist_roll: 180,
-      gripper: 180,
+      shoulder_pan: 0,
+      shoulder_lift: 0,
+      elbow_flex: 0,
+      wrist_flex: 0,
+      wrist_roll: 0,
+      gripper: 0,
     },
     compoundMovements: [
       // Jaw compound movements

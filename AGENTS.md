@@ -4,46 +4,50 @@ This file provides guidance for AI agents working in this repository.
 
 ## Project Overview
 
-Bambot is an open-source, low-cost humanoid robot (~$300) built with 3D printed parts and STS3215 servo motors.
+Bambot is an open-source, low-cost humanoid robot (~$300) built with 3D printed parts and STS3215 servo motors. The website is a Next.js 15 application for robot visualization and control.
 
 ### Repository Structure
 
 ```
 bambot/
-├── website/           # Next.js 15 website (bambot.org)
-├── feetech.js/        # JavaScript SDK for feetech STS3215 servos
-├── hardware/          # Hardware documentation and BOM
-├── AGENTS.md          # This file
-└── CLAUDE.md          # Human-focused project documentation
+├── app/               # Next.js App Router pages
+├── components/        # React components
+│   └── playground/   # Robot control components
+├── config/           # Configuration files
+├── hooks/            # Custom React hooks
+├── lib/              # Utilities
+├── public/           # Static assets (URDFs, images)
+├── types/            # TypeScript type definitions
+├── styles/           # Global styles
+├── config/           # Robot configurations
+└── AGENTS.md         # This file
 ```
 
 ---
 
 ## Development Commands
 
-All commands run from the `website/` directory.
+All commands run from the repository root (not a subdirectory).
 
 ```bash
-cd website
-
 # Development
-npm run dev          # Start dev server with Turbopack (http://localhost:3000)
-npm run build        # Production build
-npm run start        # Run production server
+pnpm dev          # Start dev server with Turbopack (http://localhost:3000)
+pnpm build        # Production build
+pnpm start        # Run production server
 
 # Linting
-npm run lint          # Lint all code
+pnpm lint         # Lint all code with Next.js ESLint
 
 # Testing
-# No tests currently defined. Add tests with Vitest/Jest when needed.
+# No tests currently defined
 ```
 
 ### Running Single Tests
 
 When tests are added, use:
 ```bash
-npm run test -- <test-file>    # Run specific test file
-npm run test -- --watch       # Watch mode
+pnpm test -- <test-file>    # Run specific test file
+pnpm test -- --watch        # Watch mode
 ```
 
 ---
@@ -54,24 +58,38 @@ npm run test -- --watch       # Watch mode
 
 - **Strict mode enabled** in `tsconfig.json`
 - Module resolution: `bundler`
-- Path aliases: `@/*` maps to `./website/*`
+- Path aliases: `@/*` maps to `./` (project root)
 
 ### File Organization
 
 ```
-website/
-├── app/                    # Next.js App Router pages
-│   ├── page.tsx           # Home page
-│   ├── assemble/           # Assembly instructions
-│   ├── feetech.js/         # SDK documentation
-│   └── play/[slug]/        # Robot playground routes
-├── components/
-│   ├── playground/         # Robot control components
-│   ├── ui/                # shadcn/ui primitives
-│   └── *.tsx              # Shared components
-├── config/                # Configuration files
-├── hooks/                 # Custom React hooks
-└── lib/                   # Utilities
+app/
+├── page.tsx              # Home page
+├── layout.tsx            # Root layout
+├── assemble/             # Assembly instructions
+├── feetech.js/            # SDK documentation
+└── play/[slug]/           # Robot playground routes
+
+components/
+├── playground/            # Robot 3D control components
+│   ├── ros2Control/       # ROS2 bridge panel
+│   ├── keyboardControl/   # Keyboard control
+│   └── *.tsx
+├── ui/                   # shadcn/ui primitives
+└── *.tsx                 # Shared components
+
+config/
+└── robotConfig.ts        # Robot configurations
+
+hooks/
+└── use*.ts               # Custom React hooks
+
+lib/
+├── utils.ts              # Utilities (cn, etc.)
+└── panelSettings.ts      # Panel state persistence
+
+types/
+└── ros.ts                # ROS type definitions
 ```
 
 ### Naming Conventions
@@ -136,7 +154,6 @@ export type JointState = {
   name: string;
   servoId?: number;
   jointType: "revolute" | "continuous";
-  // ...
 };
 ```
 
@@ -193,26 +210,18 @@ const scsServoSDK = useRef(new ScsServoSDK()).current;
 
 ## Key Dependencies
 
-| Package | Version | Purpose |
-|---------|---------|---------|
-| next | 15.3.2 | Framework |
-| react | 19 | UI library |
-| @react-three/fiber | 9.1.2 | 3D rendering |
-| three | 0.175.0 | 3D graphics |
-| @ai-sdk/openai | 1.3.22 | Chat integration |
-| shadcn/ui | - | UI components |
-| tailwindcss | 3.4 | Styling |
-| zod | 3.24.1 | Validation |
-
----
-
-## Testing Guidelines
-
-**When adding tests:**
-- Use Vitest for unit tests, React Testing Library for components
-- Place tests next to source files: `Component.tsx` → `Component.test.tsx`
-- Mock external dependencies (feetech.js SDK, browser APIs)
-- Aim for >80% coverage on utility functions
+| Package | Purpose |
+|---------|---------|
+| next 15.3.2 | Framework |
+| react 19 | UI library |
+| @react-three/fiber | 3D rendering |
+| three | 3D graphics |
+| roslib | ROS bridge integration |
+| feetech.js | Servo motor SDK |
+| @ai-sdk/openai | Chat integration |
+| shadcn/ui | UI components |
+| tailwindcss | Styling |
+| zod | Validation |
 
 ---
 
@@ -222,7 +231,7 @@ const scsServoSDK = useRef(new ScsServoSDK()).current;
 - Commit messages: imperative mood, 50 chars max subject
   - `feat: add robot recording feature`
   - `fix: resolve servo connection timeout`
-- Run `npm run lint` before committing
+- Run `pnpm lint` before committing
 - Open PRs against `main` branch
 
 ---
