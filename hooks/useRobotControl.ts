@@ -227,7 +227,7 @@ export function useRobotControl(
         if (isConnected) {
           try {
             // Check if value is within the valid range (0-360 degrees)
-            if (value >= 0 && value <= 360) {
+            if (value >= -180 && value <= 180) {
               const servoPosition = degreesToServoPosition(value); // Use utility function
               await scsServoSDK.writePosition(
                 servoId,
@@ -304,7 +304,7 @@ export function useRobotControl(
           newStates[jointIndex].degrees = value;
 
           if (isConnected) {
-            if (value >= 0 && value <= 360) {
+            if (value >= -180 && value <= 180) {
               const servoPosition = degreesToServoPosition(value); // Use utility function
               servoPositions[servoId] = Math.round(servoPosition);
               validUpdates.push({ servoId, value }); // Store valid updates

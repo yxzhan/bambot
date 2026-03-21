@@ -11,7 +11,7 @@ export function cn(...inputs: ClassValue[]) {
  * @returns The corresponding angle (0 to 360 degrees).
  */
 export function servoPositionToAngle(position: number): number {
-  return (position / 4096) * 360;
+  return (position / 4096) * 360 - 180;
 }
 
 /**
@@ -47,5 +47,5 @@ export function radiansToServoPosition(radians: number): number {
  * @returns The corresponding servo position (0 to 4096).
  */
 export function degreesToServoPosition(degrees: number): number {
-  return Math.min(Math.round((degrees * 4096) / 360), 4096);
+  return Math.min(Math.round(((degrees + 180) * 4096) / 360), 4096);
 }
