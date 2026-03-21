@@ -17,6 +17,8 @@ type ROS2PanelProps = {
   onDisconnect: () => void;
   rosControlEnabled?: boolean;
   onRosControlToggle?: () => void;
+  rosLeaderBroadcastEnabled?: boolean;
+  onLeaderBroadcastToggle?: () => void;
   defaultUrl?: string;
 };
 
@@ -32,6 +34,8 @@ export function ROS2Panel({
   onDisconnect,
   rosControlEnabled = false,
   onRosControlToggle,
+  rosLeaderBroadcastEnabled = false,
+  onLeaderBroadcastToggle,
   defaultUrl = DEFAULT_URL,
 }: ROS2PanelProps) {
   const [ref, bounds] = useMeasure();
@@ -176,18 +180,33 @@ export function ROS2Panel({
         )}
 
         {status === "connected" && (
-          <div className="mb-3 flex items-center gap-2">
-            <label className="text-xs text-zinc-400">Control robot:</label>
-            <button
-              onClick={onRosControlToggle}
-              className={`text-xs px-2 py-1 rounded ${
-                rosControlEnabled
-                  ? "bg-green-700 text-green-200"
-                  : "bg-zinc-700 text-zinc-400"
-              }`}
-            >
-              {rosControlEnabled ? "Enabled" : "Disabled"}
-            </button>
+          <div className="mb-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-zinc-400">Control robot:</label>
+              <button
+                onClick={onRosControlToggle}
+                className={`text-xs px-2 py-1 rounded ${
+                  rosControlEnabled
+                    ? "bg-green-700 text-green-200"
+                    : "bg-zinc-700 text-zinc-400"
+                }`}
+              >
+                {rosControlEnabled ? "Enabled" : "Disabled"}
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-zinc-400">Broadcast leader:</label>
+              <button
+                onClick={onLeaderBroadcastToggle}
+                className={`text-xs px-2 py-1 rounded ${
+                  rosLeaderBroadcastEnabled
+                    ? "bg-green-700 text-green-200"
+                    : "bg-zinc-700 text-zinc-400"
+                }`}
+              >
+                {rosLeaderBroadcastEnabled ? "Enabled" : "Disabled"}
+              </button>
+            </div>
           </div>
         )}
 

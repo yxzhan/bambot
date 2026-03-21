@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useRef, Suspense } from "react";
+import { useEffect, useState, useRef, Suspense, useCallback } from "react";
+import { degreesToRadians } from "@/lib/utils";
 import { useSearchParams } from "next/navigation";
 import { robotConfigMap } from "@/config/robotConfig";
 import * as THREE from "three";
@@ -75,6 +76,7 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
     return getPanelStateFromLocalStorage("ros2Panel", robotName) ?? false;
   });
   const [rosControlEnabled, setRosControlEnabled] = useState(false);
+  const [rosLeaderBroadcastEnabled, setRosLeaderBroadcastEnabled] = useState(false);
   const config = robotConfigMap[robotName];
 
   const {
@@ -83,7 +85,8 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
     jointState: ros2JointState,
     connect: connectROS2,
     disconnect: disconnectROS2,
-  } = useROS2();
+    publishJointState,
+  } = useROS2({ subscribeEnabled: rosControlEnabled });
 
   // Get leader robot servo IDs (exclude continuous joint types)
   const leaderServoIds = jointDetails
@@ -156,6 +159,26 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
       updateJointsDegrees(updates);
     }
   }, [ros2JointState, rosControlEnabled, jointDetails, updateJointsDegrees]);
+
+  // Scenario 1: publish leader arm state to ROS (/leader/joint_states)
+  const publishLeaderStateToROS = useCallback(
+    (leaderAngles: { servoId: number; angle: number }[]) => {
+      if (!rosLeaderBroadcastEnabled || ros2Status !== "connected") return;
+      const names: string[] = [];
+      const positions: number[] = [];
+      leaderAngles.forEach(({ servoId, angle }) => {
+        const joint = jointDetails.find((j) => j.servoId === servoId);
+        if (joint) {
+          names.push(joint.name);
+          positions.push(degreesToRadians(angle));
+        }
+      });
+      if (names.length > 0) {
+        publishJointState({ topicName: "/leader/joint_states", jointNames: names, positions });
+      }
+    },
+    [rosLeaderBroadcastEnabled, ros2Status, jointDetails, publishJointState]
+  );
 
   // Functions to handle panel state changes and localStorage updates
   const toggleControlPanel = () => {
@@ -309,6 +332,7 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
               )
           );
         }}
+        onPublishToROS={publishLeaderStateToROS}
       />
 
       {/* Record Control overlay */}
@@ -346,6 +370,8 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
         onDisconnect={disconnectROS2}
         rosControlEnabled={rosControlEnabled}
         onRosControlToggle={() => setRosControlEnabled((prev) => !prev)}
+        rosLeaderBroadcastEnabled={rosLeaderBroadcastEnabled}
+        onLeaderBroadcastToggle={() => setRosLeaderBroadcastEnabled((prev) => !prev)}
         defaultUrl={ros2WsUrl}
       />
 

@@ -14,14 +14,22 @@ import { LeaderConnectionHelpDialog } from "./LeaderConnectionHelpDialog";
  * - onHide: () => void
  */
 
-const SYNC_INTERVAL = 10; // ms
+const SYNC_INTERVAL = 50; // ms
 
 const LeaderControl = ({
   leaderControl,
   jointDetails,
   onSync,
+  onPublishToROS,
   show = true,
   onHide,
+}: {
+  leaderControl: { isConnected: boolean; connectLeader: () => Promise<void>; disconnectLeader: () => Promise<void>; getPositions: () => Promise<Map<number, number>> };
+  jointDetails: { servoId: number; name: string; jointType: string }[];
+  onSync: (leaderAngles: { servoId: number; angle: number }[]) => void;
+  onPublishToROS?: (leaderAngles: { servoId: number; angle: number }[]) => void;
+  show?: boolean;
+  onHide: () => void;
 }) => {
   const revoluteJoints = jointDetails.filter((j) => j.jointType === "revolute");
   const { isConnected, connectLeader, disconnectLeader, getPositions } =
@@ -52,6 +60,7 @@ const LeaderControl = ({
       }));
       setAngles(leaderAngles);
       onSync(leaderAngles);
+      onPublishToROS?.(leaderAngles);
     }, SYNC_INTERVAL);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
