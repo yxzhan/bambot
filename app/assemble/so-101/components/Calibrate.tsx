@@ -417,7 +417,7 @@ export default function Calibrate() {
             {t.congratulations}
           </h3>
           <p className="text-blue-300">{t.congratulationsDesc}</p>
-          <Link href="/play/so-arm100" className="mt-4 inline-block">
+          <Link href="/" className="mt-4 inline-block">
             <Button>{t.goToControlPage}</Button>
           </Link>
         </div>
