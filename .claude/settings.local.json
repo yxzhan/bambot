@@ -3,7 +3,8 @@
     "allow": [
       "Bash(npm run:*)",
       "Bash(npm install:*)",
-      "Bash(head:*)"
+      "Bash(head:*)",
+      "Bash(pnpm build:*)"
     ]
   }
 }

@@ -7,7 +7,7 @@ import { LeaderConnectionHelpDialog } from "./LeaderConnectionHelpDialog";
 
 /**
  * props:
- * - leaderControl: { isConnected, connectLeader, disconnectLeader, positions }
+ * - leaderControl: { isConnected, connectLeader, disconnectLeader, getPositions }
  * - jointDetails: JointDetails[]
  * - onSync: (leaderAngles: { servoId: number, angle: number }[]) => void
  * - show: boolean
@@ -20,14 +20,12 @@ const LeaderControl = ({
   leaderControl,
   jointDetails,
   onSync,
-  onPublishToROS,
   show = true,
   onHide,
 }: {
   leaderControl: { isConnected: boolean; connectLeader: () => Promise<void>; disconnectLeader: () => Promise<void>; getPositions: () => Promise<Map<number, number>> };
   jointDetails: { servoId: number; name: string; jointType: string }[];
   onSync: (leaderAngles: { servoId: number; angle: number }[]) => void;
-  onPublishToROS?: (leaderAngles: { servoId: number; angle: number }[]) => void;
   show?: boolean;
   onHide: () => void;
 }) => {
@@ -60,7 +58,6 @@ const LeaderControl = ({
       }));
       setAngles(leaderAngles);
       onSync(leaderAngles);
-      onPublishToROS?.(leaderAngles);
     }, SYNC_INTERVAL);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps

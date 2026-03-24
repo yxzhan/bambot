@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, Suspense, useCallback } from "react";
+import { useEffect, useState, useRef, Suspense } from "react";
 import { degreesToRadians } from "@/lib/utils";
 import { useSearchParams } from "next/navigation";
 import { robotConfigMap } from "@/config/robotConfig";
@@ -76,7 +76,6 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
     return getPanelStateFromLocalStorage("ros2Panel", robotName) ?? false;
   });
   const [rosControlEnabled, setRosControlEnabled] = useState(false);
-  const [rosLeaderBroadcastEnabled, setRosLeaderBroadcastEnabled] = useState(false);
   const config = robotConfigMap[robotName];
 
   const {
@@ -160,25 +159,29 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
     }
   }, [ros2JointState, rosControlEnabled, jointDetails, updateJointsDegrees]);
 
-  // Scenario 1: publish leader arm state to ROS (/leader/joint_states)
-  const publishLeaderStateToROS = useCallback(
-    (leaderAngles: { servoId: number; angle: number }[]) => {
-      if (!rosLeaderBroadcastEnabled || ros2Status !== "connected") return;
+  // Keep a ref to the latest jointStates so the broadcast interval
+  // doesn't restart on every state change (which would stall it during key holds).
+  const jointStatesRef = useRef(jointStates);
+  jointStatesRef.current = jointStates;
+
+  // Broadcast follower joint state to ROS at ~30Hz
+  useEffect(() => {
+    if (ros2Status !== "connected" || jointDetails.length === 0) return;
+    const timer = setInterval(() => {
       const names: string[] = [];
       const positions: number[] = [];
-      leaderAngles.forEach(({ servoId, angle }) => {
-        const joint = jointDetails.find((j) => j.servoId === servoId);
-        if (joint) {
-          names.push(joint.name);
-          positions.push(degreesToRadians(angle));
+      for (const js of jointStatesRef.current) {
+        if (typeof js.degrees === "number") {
+          names.push(js.name);
+          positions.push(degreesToRadians(js.degrees));
         }
-      });
-      if (names.length > 0) {
-        publishJointState({ topicName: "/leader/joint_states", jointNames: names, positions });
       }
-    },
-    [rosLeaderBroadcastEnabled, ros2Status, jointDetails, publishJointState]
-  );
+      if (names.length > 0) {
+        publishJointState({ topicName: "/joint_states", jointNames: names, positions });
+      }
+    }, 33);
+    return () => clearInterval(timer);
+  }, [ros2Status, jointDetails.length, publishJointState]);
 
   // Functions to handle panel state changes and localStorage updates
   const toggleControlPanel = () => {
@@ -332,7 +335,6 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
               )
           );
         }}
-        onPublishToROS={publishLeaderStateToROS}
       />
 
       {/* Record Control overlay */}
@@ -370,8 +372,6 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
         onDisconnect={disconnectROS2}
         rosControlEnabled={rosControlEnabled}
         onRosControlToggle={() => setRosControlEnabled((prev) => !prev)}
-        rosLeaderBroadcastEnabled={rosLeaderBroadcastEnabled}
-        onLeaderBroadcastToggle={() => setRosLeaderBroadcastEnabled((prev) => !prev)}
         defaultUrl={ros2WsUrl}
       />
 
