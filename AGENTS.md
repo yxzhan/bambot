@@ -73,6 +73,7 @@ app/
 components/
 ├── playground/            # Robot 3D control components
 │   ├── ros2Control/       # ROS2 bridge panel
+│   ├── handControl/       # Webcam hand tracking control
 │   ├── keyboardControl/   # Keyboard control
 │   └── *.tsx
 ├── ui/                   # shadcn/ui primitives
@@ -216,6 +217,7 @@ const scsServoSDK = useRef(new ScsServoSDK()).current;
 | react 19 | UI library |
 | @react-three/fiber | 3D rendering |
 | three | 3D graphics |
+| @mediapipe/tasks-vision | Webcam hand landmark detection |
 | roslib | ROS bridge integration |
 | feetech.js | Servo motor SDK |
 | @ai-sdk/openai | Chat integration |

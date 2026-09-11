@@ -14,6 +14,11 @@ pnpm build    # Production build
 pnpm lint     # ESLint via Next.js
 ```
 
+`predev` / `prebuild` run `scripts/fetch-mediapipe-assets.mjs`, which copies the
+MediaPipe wasm bundle out of node_modules and downloads the hand landmarker
+model into `public/mediapipe/` (gitignored). Re-run it with `--force` to refresh
+after bumping `@mediapipe/tasks-vision`.
+
 No tests are currently defined.
 
 ## Architecture
@@ -39,7 +44,7 @@ All robot definitions live in `config/robotConfig.ts` as entries in `robotConfig
 
 `components/playground/RobotLoader.tsx` is the top-level container that renders the 3D scene and all control panels. Panels are independently draggable (via `react-rnd`) and their visibility is toggled by button components in `controlButtons/`. Panel visibility persists in `localStorage` via `lib/panelSettings.ts`.
 
-Five control modes, each with its own panel + hook:
+Six control modes, each with its own panel + hook:
 
 | Panel | Hook | Purpose |
 |-------|------|---------|
@@ -48,10 +53,27 @@ Five control modes, each with its own panel + hook:
 | `leaderControl/` | `useLeaderRobotControl` | Teleoperation from leader robot |
 | `recordControl/` | (in `useRobotControl`) | Record/replay joint sequences at 20ms intervals |
 | `ros2Control/` | `useROS2` | ROS2 bridge via rosbridge WebSocket |
+| `handControl/` | `useHandLandmarker` + `useHandTeleop` | Webcam hand tracking → IK → end effector |
 
 ### 3D Visualization
 
 `components/playground/RobotScene.tsx` uses `@react-three/fiber` + `urdf-loader` to render the robot from `public/URDFs/so101.urdf`. Joint states are updated by mutating Three.js joint objects directly.
+
+### Hand Control
+
+`useHandLandmarker` runs MediaPipe's Hand Landmarker over a webcam stream and
+writes the pose into a ref (never state - it updates at camera frame rate).
+`useHandTeleop` maps that pose into a marker in the 3D scene; once the marker
+lines up with the gripper it latches on and `lib/ik.ts` solves the arm joints
+that follow it, which are then pushed through `updateJointsDegrees` like any
+other control mode. Detaching happens when the target leaves the reachable
+workspace (the IK position residual stays above tolerance), when the hand leaves
+the frame, or on Esc.
+
+`lib/ik.ts` is a generic damped least squares solver over a URDF joint chain -
+it works in world space on the live Three.js transforms, so the scene scale and
+rotation need no special handling. Each robot declares its chain in
+`robotConfig.ts` via `ik: { chainJoints, tcpLinkName, gripperJoint }`.
 
 ### State Management
 

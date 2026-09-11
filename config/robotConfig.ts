@@ -1,3 +1,5 @@
+import type { HandControlSettings } from "@/config/handControlConfig";
+
 // Define camera settings type
 type CameraSettings = {
   position: [number, number, number];
@@ -21,6 +23,16 @@ type CompoundMovement = {
   }[];
 };
 
+// Inverse kinematics description used by hand control
+type IKConfig = {
+  /** Actuated joints from the base to the tool, in chain order. */
+  chainJoints: string[];
+  /** Link whose frame is driven to the target pose. */
+  tcpLinkName: string;
+  /** Joint driven by how open the operator's hand is. */
+  gripperJoint: string;
+};
+
 // Define combined robot configuration type
 export type RobotConfig = {
   urdfUrl: string;
@@ -40,6 +52,9 @@ export type RobotConfig = {
   compoundMovements?: CompoundMovement[];
   controlPrompt?: string;
   systemPrompt?: string; // <-- Add this line
+  ik?: IKConfig;
+  /** Per-robot overrides for the webcam hand control defaults. */
+  handControl?: Partial<HandControlSettings>;
 };
 
 // Define configuration map per slug
@@ -109,6 +124,23 @@ export const robotConfigMap: { [key: string]: RobotConfig } = {
         ],
       },
     ],
+    ik: {
+      chainJoints: [
+        "shoulder_pan",
+        "shoulder_lift",
+        "elbow_flex",
+        "wrist_flex",
+        "wrist_roll",
+      ],
+      tcpLinkName: "gripper_frame_link",
+      gripperJoint: "gripper",
+    },
+    handControl: {
+      // The robot is scaled by 15 in the scene, so ~1 unit is 6.7 cm and the
+      // arm reaches roughly 5 units from the base.
+      workspaceCenter: [2, 2.5, 0],
+      workspaceSize: [7, 5, 6],
+    },
     systemPrompt: `You can help control the so-arm100 robot by pressing keyboard keys. Use the keyPress tool to simulate key presses. Each key will be held down for 1 second by default. If the user describes roughly wanting to make it longer or shorter, adjust the duration accordingly.
     The robot can be controlled with the following keys:
     - "q" and "1" for rotate the bot to left and right

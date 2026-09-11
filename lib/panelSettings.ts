@@ -7,6 +7,8 @@ type PanelStates = {
   chatControl?: boolean;
   recordControl?: boolean;
   webcamPanel?: boolean;
+  ros2Panel?: boolean;
+  handControl?: boolean;
 };
 
 type RobotPanelSettings = {

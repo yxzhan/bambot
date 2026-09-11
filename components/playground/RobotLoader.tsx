@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useState, useRef, Suspense } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useRef,
+  Suspense,
+} from "react";
 import { degreesToRadians } from "@/lib/utils";
 import { useSearchParams } from "next/navigation";
 import { robotConfigMap } from "@/config/robotConfig";
@@ -23,6 +30,21 @@ import RecordControl from "./recordControl/RecordControl";
 import { CameraPanel } from "./cameraControl/CameraPanel";
 import ROS2Button from "./ros2Control/ROS2Button";
 import { ROS2Panel } from "./ros2Control/ROS2Panel";
+import HandControlButton from "./controlButtons/HandControlButton";
+import { HandControl } from "./handControl/HandControl";
+import { HandMarker } from "./handControl/HandMarker";
+import { useHandLandmarker } from "@/hooks/useHandLandmarker";
+import { useHandTeleop } from "@/hooks/useHandTeleop";
+import {
+  DEFAULT_HAND_CONTROL_SETTINGS,
+  HandControlSettings,
+} from "@/config/handControlConfig";
+import {
+  clearHandSettingsFromLocalStorage,
+  getHandSettingsFromLocalStorage,
+  setHandSettingsToLocalStorage,
+} from "@/lib/handSettings";
+import type { URDFRobot } from "urdf-loader";
 import {
   getPanelStateFromLocalStorage,
   setPanelStateToLocalStorage,
@@ -75,8 +97,29 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
   const [showROS2Panel, setShowROS2Panel] = useState(() => {
     return getPanelStateFromLocalStorage("ros2Panel", robotName) ?? false;
   });
+  const [showHandControl, setShowHandControl] = useState(() => {
+    return getPanelStateFromLocalStorage("handControl", robotName) ?? false;
+  });
+  // The camera only starts once the operator opts in, and stops again as soon
+  // as the panel is closed.
+  const [handCameraEnabled, setHandCameraEnabled] = useState(false);
   const [rosControlEnabled, setRosControlEnabled] = useState(false);
   const config = robotConfigMap[robotName];
+
+  const handDefaults: HandControlSettings = useMemo(
+    () => ({
+      ...DEFAULT_HAND_CONTROL_SETTINGS,
+      ...(robotConfigMap[robotName]?.handControl ?? {}),
+    }),
+    [robotName]
+  );
+  const [handSettings, setHandSettings] = useState<HandControlSettings>(() =>
+    getHandSettingsFromLocalStorage(robotName, {
+      ...DEFAULT_HAND_CONTROL_SETTINGS,
+      ...(robotConfigMap[robotName]?.handControl ?? {}),
+    })
+  );
+  const robotRef = useRef<URDFRobot | null>(null);
 
   const {
     status: ros2Status,
@@ -129,6 +172,39 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
   useEffect(() => {
     updateJointDetails(jointDetails);
   }, [jointDetails, updateJointDetails]);
+
+  // --- Webcam hand control ------------------------------------------------
+  const handTrackingEnabled = showHandControl && handCameraEnabled;
+
+  const handleRobotLoaded = useCallback((robot: URDFRobot) => {
+    robotRef.current = robot;
+  }, []);
+
+  const updateHandSettings = useCallback(
+    (next: HandControlSettings) => {
+      setHandSettings(next);
+      setHandSettingsToLocalStorage(robotName, next);
+    },
+    [robotName]
+  );
+
+  const resetHandSettings = useCallback(() => {
+    setHandSettings(handDefaults);
+    clearHandSettingsFromLocalStorage(robotName);
+  }, [robotName, handDefaults]);
+
+  const handLandmarker = useHandLandmarker(handTrackingEnabled);
+  const handTeleop = useHandTeleop({
+    enabled: handTrackingEnabled,
+    robotRef,
+    handPoseRef: handLandmarker.handPoseRef,
+    settings: handSettings,
+    ikConfig: config.ik,
+    jointDetails,
+    updateJointsDegrees,
+    onOrientationCalibrated: (offset) =>
+      updateHandSettings({ ...handSettings, orientationOffset: offset }),
+  });
 
   const lastRosPositionRef = useRef<Record<string, number>>({});
 
@@ -262,6 +338,19 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
     });
   };
 
+  const toggleHandControl = () => {
+    setShowHandControl((prev) => {
+      const newState = !prev;
+      setPanelStateToLocalStorage("handControl", newState, robotName);
+      return newState;
+    });
+  };
+
+  const hideHandControl = () => {
+    setShowHandControl(false);
+    setPanelStateToLocalStorage("handControl", false, robotName);
+  };
+
   const hideROS2Panel = () => {
     setShowROS2Panel(false);
     setPanelStateToLocalStorage("ros2Panel", false, robotName);
@@ -287,7 +376,10 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
             orbitTarget={orbitTarget}
             setJointDetails={setJointDetails}
             jointStates={jointStates}
-          />
+            onRobotLoaded={handleRobotLoaded}
+          >
+            <HandMarker markerRef={handTeleop.markerRef} />
+          </RobotScene>
         </Suspense>
       </Canvas>
 
@@ -361,6 +453,19 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
         onHide={hideWebcamPanel}
       />
 
+      {/* Hand Control overlay */}
+      <HandControl
+        show={showHandControl}
+        onHide={hideHandControl}
+        enabled={handCameraEnabled}
+        onEnabledChange={setHandCameraEnabled}
+        landmarker={handLandmarker}
+        teleop={handTeleop}
+        settings={handSettings}
+        onSettingsChange={updateHandSettings}
+        onResetSettings={resetHandSettings}
+      />
+
       {/* ROS 2 Panel overlay */}
       <ROS2Panel
         show={showROS2Panel}
@@ -397,6 +502,10 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
             <WebcamButton
               showControlPanel={showWebcamPanel}
               onToggleControlPanel={toggleWebcamPanel}
+            />
+            <HandControlButton
+              showControlPanel={showHandControl}
+              onToggleControlPanel={toggleHandControl}
             />
             <ROS2Button
               showControlPanel={showROS2Panel}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { ReactNode, useEffect, useRef } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import URDFLoader, { URDFRobot, URDFJoint } from "urdf-loader";
@@ -26,6 +26,11 @@ type RobotSceneProps = {
   orbitTarget?: [number, number, number];
   setJointDetails: (details: JointDetails[]) => void;
   jointStates: JointState[];
+  /** Called once the URDF is in the scene, so other features (e.g. hand
+   * control's IK) can read joint and link transforms. */
+  onRobotLoaded?: (robot: URDFRobot) => void;
+  /** Extra objects rendered inside the scene, such as the hand marker. */
+  children?: ReactNode;
 };
 
 export function RobotScene({
@@ -34,9 +39,13 @@ export function RobotScene({
   orbitTarget,
   setJointDetails,
   jointStates,
+  onRobotLoaded,
+  children,
 }: RobotSceneProps) {
   const { scene } = useThree();
   const robotRef = useRef<URDFRobot | null>(null);
+  const onRobotLoadedRef = useRef(onRobotLoaded);
+  onRobotLoadedRef.current = onRobotLoaded;
 
   useEffect(() => {
     const manager = new THREE.LoadingManager();
@@ -82,6 +91,7 @@ export function RobotScene({
         const scale = 15;
         robot.scale.set(scale, scale, scale);
         scene.add(robot);
+        onRobotLoadedRef.current?.(robot);
       },
       undefined,
       (error) => console.error("Error loading URDF:", error)
@@ -130,6 +140,7 @@ export function RobotScene({
         shadow-mapSize-height={1024}
       />
       <ambientLight intensity={0.4} />
+      {children}
     </>
   );
 }
