@@ -1,8 +1,10 @@
 /**
  * Prepares the MediaPipe static assets used by the hand control panel.
  *
- * - Copies the `@mediapipe/tasks-vision` wasm bundle out of node_modules into
- *   `public/mediapipe/wasm/`.
+ * - Copies the `@mediapipe/tasks-vision` ES bundle and its wasm files out of
+ *   node_modules into `public/mediapipe/`. The library is loaded at runtime
+ *   rather than bundled: it contains a dynamic `import()` of its own wasm
+ *   loader that Turbopack refuses to resolve, which breaks `next dev`.
  * - Downloads the Hand Landmarker model into `public/mediapipe/models/`.
  *
  * Both outputs are gitignored, so this runs from `predev` / `prebuild`.
@@ -18,44 +20,59 @@ const require = createRequire(import.meta.url);
 const MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
 
-const WASM_DIR = path.resolve("public/mediapipe/wasm");
+const MEDIAPIPE_DIR = path.resolve("public/mediapipe");
+const WASM_DIR = path.join(MEDIAPIPE_DIR, "wasm");
 const MODEL_DIR = path.resolve("public/mediapipe/models");
 const MODEL_FILE = path.join(MODEL_DIR, "hand_landmarker.task");
 
 const force = process.argv.includes("--force");
 
-function copyWasm() {
-  let srcDir;
+function copyLibrary() {
+  let wasmSrcDir;
   try {
     // The package only exports individual files, so resolve one of the wasm
     // entries and take its directory.
-    srcDir = path.dirname(
+    wasmSrcDir = path.dirname(
       require.resolve("@mediapipe/tasks-vision/vision_wasm_internal.js")
     );
   } catch {
     console.warn(
-      "[mediapipe] @mediapipe/tasks-vision is not installed; skipping wasm copy."
+      "[mediapipe] @mediapipe/tasks-vision is not installed; skipping library copy."
     );
     return;
   }
 
-  if (!fs.existsSync(srcDir)) {
-    console.warn(`[mediapipe] wasm directory not found at ${srcDir}; skipping.`);
+  if (!fs.existsSync(wasmSrcDir)) {
+    console.warn(
+      `[mediapipe] wasm directory not found at ${wasmSrcDir}; skipping.`
+    );
     return;
   }
 
-  fs.mkdirSync(WASM_DIR, { recursive: true });
+  const packageDir = path.dirname(wasmSrcDir);
   let copied = 0;
-  for (const file of fs.readdirSync(srcDir)) {
-    const dest = path.join(WASM_DIR, file);
-    if (!force && fs.existsSync(dest)) continue;
-    fs.copyFileSync(path.join(srcDir, file), dest);
+
+  const copy = (src, dest) => {
+    if (!force && fs.existsSync(dest)) return;
+    if (!fs.existsSync(src)) return;
+    fs.copyFileSync(src, dest);
     copied++;
+  };
+
+  fs.mkdirSync(WASM_DIR, { recursive: true });
+  for (const file of fs.readdirSync(wasmSrcDir)) {
+    copy(path.join(wasmSrcDir, file), path.join(WASM_DIR, file));
   }
+
+  copy(
+    path.join(packageDir, "vision_bundle.mjs"),
+    path.join(MEDIAPIPE_DIR, "vision_bundle.mjs")
+  );
+
   console.log(
     copied > 0
-      ? `[mediapipe] copied ${copied} wasm file(s) to public/mediapipe/wasm/`
-      : "[mediapipe] wasm assets already present."
+      ? `[mediapipe] copied ${copied} file(s) to public/mediapipe/`
+      : "[mediapipe] library assets already present."
   );
 }
 
@@ -86,5 +103,5 @@ async function downloadModel() {
   }
 }
 
-copyWasm();
+copyLibrary();
 await downloadModel();

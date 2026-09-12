@@ -1,13 +1,21 @@
 /**
  * Constants and default tunables for webcam hand control.
  *
- * The MediaPipe wasm bundle and the hand landmarker model are self-hosted under
- * `public/mediapipe/` (see `scripts/fetch-mediapipe-assets.mjs`). The CDN
- * entries are only used as a runtime fallback when the local copies are missing.
+ * The MediaPipe library, its wasm bundle and the hand landmarker model are all
+ * self-hosted under `public/mediapipe/` (see `scripts/fetch-mediapipe-assets.mjs`).
+ * The CDN entries are only used as a runtime fallback when the local copies are
+ * missing.
+ *
+ * The library is fetched at runtime instead of being bundled: it dynamically
+ * imports its own wasm loader, which Turbopack cannot resolve and which makes
+ * `next dev` fail to compile the page.
  */
 
 // Keep in sync with the @mediapipe/tasks-vision version in package.json.
 const MEDIAPIPE_VERSION = "1.0.1";
+
+export const MEDIAPIPE_BUNDLE_PATH = "./mediapipe/vision_bundle.mjs";
+export const MEDIAPIPE_BUNDLE_CDN = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.mjs`;
 
 export const MEDIAPIPE_WASM_PATH = "./mediapipe/wasm";
 export const MEDIAPIPE_WASM_CDN = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`;

@@ -16,7 +16,10 @@ import {
   HandControlSettings,
   TELEOP_INTERVAL,
 } from "@/config/handControlConfig";
-import { HandPose, normalize } from "@/lib/handPose";
+import { computeHandGuide } from "@/lib/handGuide";
+import type { HandGuide } from "@/lib/handGuide";
+import { mapHandToWorkspace, normalize } from "@/lib/handPose";
+import type { HandPose } from "@/lib/handPose";
 import {
   createIKChain,
   getTcpPose,
@@ -72,6 +75,8 @@ type UseHandTeleopParams = {
 
 export type UseHandTeleopResult = {
   markerRef: React.RefObject<MarkerState>;
+  /** Hand pose that would line up with the gripper, drawn over the preview. */
+  guideRef: React.RefObject<HandGuide>;
   status: TeleopStatus;
   detach: () => void;
   /** Treats the current hand pose as "aligned with the gripper right now". */
@@ -97,6 +102,18 @@ export function useHandTeleop({
     phase: "hidden",
     attachProgress: 0,
   });
+
+  const guideRef = useRef<HandGuide>({
+    visible: false,
+    u: 0.5,
+    v: 0.5,
+    handSize: 0.2,
+    quaternion: new THREE.Quaternion(),
+    handedness: "Right",
+    clamped: false,
+    foreshortening: 1,
+  });
+  const handednessRef = useRef("Right");
 
   const [status, setStatus] = useState<TeleopStatus>({
     phase: "hidden",
@@ -170,6 +187,7 @@ export function useHandTeleop({
     if (!enabled) {
       markerRef.current.visible = false;
       markerRef.current.phase = "hidden";
+      guideRef.current.visible = false;
       attachedRef.current = false;
       smoothedRef.current = false;
       return;
@@ -203,6 +221,26 @@ export function useHandTeleop({
         );
       }
 
+      const chain = chainRef.current;
+      if (chain) {
+        getTcpPose(chain, tcpPosRef.current, tcpQuatRef.current);
+      }
+      if (pose?.handedness) handednessRef.current = pose.handedness;
+
+      // The guide is what makes latching on possible, so it is drawn whenever
+      // the arm is free - including while no hand is in frame at all.
+      if (chain && !attachedRef.current) {
+        computeHandGuide(
+          tcpPosRef.current,
+          tcpQuatRef.current,
+          config,
+          handednessRef.current,
+          guideRef.current
+        );
+      } else {
+        guideRef.current.visible = false;
+      }
+
       const now = performance.now();
       const handFresh = pose !== null && now - pose.timestamp < config.handLostMs;
 
@@ -224,20 +262,12 @@ export function useHandTeleop({
       }
 
       // --- hand pose -> marker pose in scene space -------------------------
-      const depth = normalize(pose.handSize, config.depthFar, config.depthNear);
-      let lateral = pose.u;
-      let vertical = 1 - pose.v;
-      let forward = depth;
-      if (config.invert[0]) lateral = 1 - lateral;
-      if (config.invert[1]) vertical = 1 - vertical;
-      if (config.invert[2]) forward = 1 - forward;
-
-      // The robot is rotated -90 deg about X in the scene, so URDF forward (+X)
-      // stays scene +X, up becomes +Y and the base sweeps across scene Z.
-      targetPosRef.current.set(
-        config.workspaceCenter[0] + (forward - 0.5) * config.workspaceSize[0],
-        config.workspaceCenter[1] + (vertical - 0.5) * config.workspaceSize[1],
-        config.workspaceCenter[2] + (lateral - 0.5) * config.workspaceSize[2]
+      mapHandToWorkspace(
+        pose.u,
+        pose.v,
+        pose.handSize,
+        config,
+        targetPosRef.current
       );
 
       offsetQuatRef.current.set(
@@ -266,7 +296,6 @@ export function useHandTeleop({
         config.opennessMax
       );
 
-      const chain = chainRef.current;
       if (!chain) {
         marker.phase = "free";
         marker.attachProgress = 0;
@@ -280,7 +309,6 @@ export function useHandTeleop({
         return;
       }
 
-      getTcpPose(chain, tcpPosRef.current, tcpQuatRef.current);
       const gripperDistance = marker.position.distanceTo(tcpPosRef.current);
       const gripperAngle = quaternionAngle(
         marker.quaternion,
@@ -393,5 +421,5 @@ export function useHandTeleop({
     return () => clearInterval(timer);
   }, [enabled, robotRef, handPoseRef, detach]);
 
-  return { markerRef, status, detach, calibrateOrientation };
+  return { markerRef, guideRef, status, detach, calibrateOrientation };
 }

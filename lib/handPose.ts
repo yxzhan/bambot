@@ -12,6 +12,7 @@
 import * as THREE from "three";
 import type { HandLandmarkerResult } from "@mediapipe/tasks-vision";
 import { LANDMARK } from "@/config/handControlConfig";
+import type { HandControlSettings } from "@/config/handControlConfig";
 
 export type HandPose = {
   /** Horizontal position in the frame, 0 (left) to 1 (right), already un-mirrored. */
@@ -141,4 +142,72 @@ export function extractHandPose(
 export function normalize(value: number, min: number, max: number): number {
   if (Math.abs(max - min) < 1e-9) return 0;
   return THREE.MathUtils.clamp((value - min) / (max - min), 0, 1);
+}
+
+/**
+ * Places a hand position inside the mapped workspace box.
+ *
+ * The robot is rotated -90 deg about X in the scene, so URDF forward (+X) stays
+ * scene +X, up becomes +Y and the base sweeps across scene Z. Apparent hand size
+ * stands in for distance from the camera: a bigger hand reaches further forward.
+ *
+ * `mapWorkspaceToHand` is the exact inverse - keep the two together.
+ */
+export function mapHandToWorkspace(
+  u: number,
+  v: number,
+  handSize: number,
+  settings: HandControlSettings,
+  out: THREE.Vector3
+): THREE.Vector3 {
+  const { workspaceCenter: center, workspaceSize: size, invert } = settings;
+
+  let lateral = u;
+  let vertical = 1 - v;
+  let forward = normalize(handSize, settings.depthFar, settings.depthNear);
+  if (invert[0]) lateral = 1 - lateral;
+  if (invert[1]) vertical = 1 - vertical;
+  if (invert[2]) forward = 1 - forward;
+
+  return out.set(
+    center[0] + (forward - 0.5) * size[0],
+    center[1] + (vertical - 0.5) * size[1],
+    center[2] + (lateral - 0.5) * size[2]
+  );
+}
+
+export type WorkspaceHand = {
+  u: number;
+  v: number;
+  handSize: number;
+  /** True when the position falls outside the frame and u/v were clamped. */
+  clamped: boolean;
+};
+
+/** Inverse of `mapHandToWorkspace`: where the hand must be to land on `position`. */
+export function mapWorkspaceToHand(
+  position: THREE.Vector3,
+  settings: HandControlSettings,
+  out: WorkspaceHand
+): WorkspaceHand {
+  const { workspaceCenter: center, workspaceSize: size, invert } = settings;
+
+  let forward = (position.x - center[0]) / size[0] + 0.5;
+  let vertical = (position.y - center[1]) / size[1] + 0.5;
+  let lateral = (position.z - center[2]) / size[2] + 0.5;
+
+  if (invert[0]) lateral = 1 - lateral;
+  if (invert[1]) vertical = 1 - vertical;
+  if (invert[2]) forward = 1 - forward;
+
+  const u = lateral;
+  const v = 1 - vertical;
+  const depth = THREE.MathUtils.clamp(forward, 0, 1);
+
+  out.clamped = u < 0 || u > 1 || v < 0 || v > 1 || forward !== depth;
+  out.u = THREE.MathUtils.clamp(u, 0, 1);
+  out.v = THREE.MathUtils.clamp(v, 0, 1);
+  out.handSize =
+    settings.depthFar + depth * (settings.depthNear - settings.depthFar);
+  return out;
 }

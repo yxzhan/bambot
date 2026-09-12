@@ -6,6 +6,7 @@ import { panelStyle } from "@/components/playground/panelStyle";
 import { HandControlSettings } from "@/config/handControlConfig";
 import { UseHandLandmarkerResult } from "@/hooks/useHandLandmarker";
 import { MarkerPhase, UseHandTeleopResult } from "@/hooks/useHandTeleop";
+import { HandGuideOverlay } from "./HandGuideOverlay";
 
 type HandControlProps = {
   show?: boolean;
@@ -180,11 +181,21 @@ export function HandControl({
               className="w-full"
               style={{ transform: "scaleX(-1)", aspectRatio: "4/3" }}
             />
+            <HandGuideOverlay
+              guideRef={teleop.guideRef}
+              videoRef={landmarker.videoRef}
+              phase={status.phase}
+              active={enabled && landmarker.status === "running"}
+            />
             <canvas
               ref={landmarker.overlayRef}
               className="pointer-events-none absolute inset-0 h-full w-full"
             />
           </div>
+          <p className="text-xs text-zinc-400">
+            Match the dashed hand to latch onto the gripper — its position, size
+            and tilt all have to line up.
+          </p>
 
           <div className="space-y-1 text-xs">
             <div className={PHASE_COLOR[status.phase]}>

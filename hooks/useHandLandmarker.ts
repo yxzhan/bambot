@@ -16,10 +16,31 @@ import type {
 import {
   HAND_MODEL_CDN,
   HAND_MODEL_PATH,
+  MEDIAPIPE_BUNDLE_CDN,
+  MEDIAPIPE_BUNDLE_PATH,
   MEDIAPIPE_WASM_CDN,
   MEDIAPIPE_WASM_PATH,
 } from "@/config/handControlConfig";
-import { extractHandPose, HandPose } from "@/lib/handPose";
+import { extractHandPose } from "@/lib/handPose";
+import type { HandPose } from "@/lib/handPose";
+
+type VisionModule = typeof import("@mediapipe/tasks-vision");
+
+/** Resolves an asset path against the page URL rather than the bundle chunk. */
+function assetUrl(path: string): string {
+  return new URL(path, document.baseURI).href;
+}
+
+/**
+ * Loads the MediaPipe library at runtime.
+ *
+ * The magic comments keep webpack and Turbopack from following this import:
+ * the library dynamically imports its own wasm loader, which neither bundler
+ * can resolve statically.
+ */
+function importVision(url: string): Promise<VisionModule> {
+  return import(/* webpackIgnore: true */ /* turbopackIgnore: true */ url);
+}
 
 export type HandLandmarkerStatus = "idle" | "loading" | "running" | "error";
 
@@ -86,15 +107,29 @@ export function useHandLandmarker(enabled: boolean): UseHandLandmarkerResult {
       setError(null);
 
       try {
-        const vision = await import("@mediapipe/tasks-vision");
-        const { FilesetResolver, HandLandmarker, DrawingUtils } = vision;
-
         // Prefer the self-hosted assets, fall back to the CDN so the panel
         // still works if `scripts/fetch-mediapipe-assets.mjs` never ran.
+        let vision: VisionModule;
+        try {
+          vision = await importVision(assetUrl(MEDIAPIPE_BUNDLE_PATH));
+        } catch (localBundleError) {
+          console.warn(
+            "Failed to load the MediaPipe library from public/mediapipe, falling back to the CDN:",
+            localBundleError
+          );
+          vision = await importVision(MEDIAPIPE_BUNDLE_CDN);
+        }
+        if (cancelled) return;
+
+        const { FilesetResolver, HandLandmarker, DrawingUtils } = vision;
+
         const createLandmarker = async (wasmPath: string, modelPath: string) => {
-          const fileset = await FilesetResolver.forVisionTasks(wasmPath);
+          const fileset = await FilesetResolver.forVisionTasks(assetUrl(wasmPath));
           return HandLandmarker.createFromOptions(fileset, {
-            baseOptions: { modelAssetPath: modelPath, delegate: "GPU" },
+            baseOptions: {
+              modelAssetPath: assetUrl(modelPath),
+              delegate: "GPU",
+            },
             numHands: 1,
             runningMode: "VIDEO",
             minHandDetectionConfidence: 0.5,
