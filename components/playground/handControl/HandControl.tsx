@@ -7,6 +7,8 @@ import { HandControlSettings } from "@/config/handControlConfig";
 import { UseHandLandmarkerResult } from "@/hooks/useHandLandmarker";
 import { MarkerPhase, UseHandTeleopResult } from "@/hooks/useHandTeleop";
 import { HandGuideOverlay } from "./HandGuideOverlay";
+import { CalibrationOverlay } from "./CalibrationOverlay";
+import type { UseHandCalibrationResult } from "@/hooks/useHandCalibration";
 
 type HandControlProps = {
   show?: boolean;
@@ -15,6 +17,7 @@ type HandControlProps = {
   onEnabledChange: (enabled: boolean) => void;
   landmarker: UseHandLandmarkerResult;
   teleop: UseHandTeleopResult;
+  calibration: UseHandCalibrationResult;
   settings: HandControlSettings;
   onSettingsChange: (settings: HandControlSettings) => void;
   onResetSettings: () => void;
@@ -72,6 +75,7 @@ export function HandControl({
   onEnabledChange,
   landmarker,
   teleop,
+  calibration,
   settings,
   onSettingsChange,
   onResetSettings,
@@ -185,17 +189,54 @@ export function HandControl({
               guideRef={teleop.guideRef}
               videoRef={landmarker.videoRef}
               phase={status.phase}
-              active={enabled && landmarker.status === "running"}
+              active={
+                enabled && landmarker.status === "running" && !calibration.active
+              }
+            />
+            <CalibrationOverlay
+              state={calibration.state}
+              videoRef={landmarker.videoRef}
+              active={calibration.active}
             />
             <canvas
               ref={landmarker.overlayRef}
               className="pointer-events-none absolute inset-0 h-full w-full"
             />
           </div>
-          <p className="text-xs text-zinc-400">
-            Match the dashed hand to latch onto the gripper — its position, size
-            and tilt all have to line up.
-          </p>
+          {calibration.active ? (
+            <div className="space-y-2 rounded border border-sky-400/40 bg-sky-400/10 p-2">
+              <div className="text-xs font-semibold text-sky-300">
+                Step {calibration.state.index} of {calibration.state.total} —{" "}
+                {calibration.state.title}
+              </div>
+              <p className="text-xs text-zinc-300">{calibration.state.detail}</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={calibration.captureNow}
+                  className="rounded bg-sky-500/70 px-2 py-1 text-xs hover:bg-sky-500"
+                >
+                  Capture now
+                </button>
+                <button
+                  onClick={calibration.cancel}
+                  className="rounded bg-zinc-700/70 px-2 py-1 text-xs hover:bg-zinc-600"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : calibration.state.step === "done" ? (
+            <p className="rounded border border-green-400/40 bg-green-400/10 p-2 text-xs text-green-300">
+              Calibrated. Your held pose is now the gripper pose, so the marker
+              should latch on straight away.
+            </p>
+          ) : (
+            <p className="text-xs text-zinc-400">
+              Match the dashed hand to latch onto the gripper — its position,
+              size and tilt all have to line up. Run the calibration first so
+              your natural range of movement covers the whole workspace.
+            </p>
+          )}
 
           <div className="space-y-1 text-xs">
             <div className={PHASE_COLOR[status.phase]}>
@@ -226,11 +267,18 @@ export function HandControl({
               Detach (Esc)
             </button>
             <button
+              onClick={calibration.start}
+              disabled={!enabled || calibration.active}
+              className="rounded bg-sky-600/80 px-2 py-1 text-xs hover:bg-sky-600 disabled:opacity-40"
+            >
+              Calibrate
+            </button>
+            <button
               onClick={() => teleop.calibrateOrientation()}
               title="Hold your hand the way it should line up with the gripper, then press this"
               className="rounded bg-zinc-700/70 px-2 py-1 text-xs hover:bg-zinc-600"
             >
-              Calibrate orientation
+              Pose only
             </button>
             <button
               onClick={() => setShowTuning((prev) => !prev)}

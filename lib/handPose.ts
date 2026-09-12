@@ -126,10 +126,12 @@ export function extractHandPose(
   const openness = handLength > 1e-6 ? pinch / handLength : 0;
 
   return {
+    // Anchored at the wrist: it is the steadiest landmark, so opening and
+    // closing the hand moves the gripper's jaws without dragging the arm.
     // The preview is mirrored, so the raw x already reads as "mirror image".
     // Flip it back so moving the hand right moves the marker right on screen.
-    u: 1 - middleMcp.x,
-    v: middleMcp.y,
+    u: 1 - wrist.x,
+    v: wrist.y,
     handSize,
     quaternion,
     openness,
@@ -162,8 +164,8 @@ export function mapHandToWorkspace(
 ): THREE.Vector3 {
   const { workspaceCenter: center, workspaceSize: size, invert } = settings;
 
-  let lateral = u;
-  let vertical = 1 - v;
+  let lateral = normalize(u, settings.frameMinU, settings.frameMaxU);
+  let vertical = 1 - normalize(v, settings.frameMinV, settings.frameMaxV);
   let forward = normalize(handSize, settings.depthFar, settings.depthNear);
   if (invert[0]) lateral = 1 - lateral;
   if (invert[1]) vertical = 1 - vertical;
@@ -200,13 +202,19 @@ export function mapWorkspaceToHand(
   if (invert[1]) vertical = 1 - vertical;
   if (invert[2]) forward = 1 - forward;
 
-  const u = lateral;
-  const v = 1 - vertical;
+  const clampedLateral = THREE.MathUtils.clamp(lateral, 0, 1);
+  const clampedVertical = THREE.MathUtils.clamp(vertical, 0, 1);
   const depth = THREE.MathUtils.clamp(forward, 0, 1);
 
-  out.clamped = u < 0 || u > 1 || v < 0 || v > 1 || forward !== depth;
-  out.u = THREE.MathUtils.clamp(u, 0, 1);
-  out.v = THREE.MathUtils.clamp(v, 0, 1);
+  out.clamped =
+    lateral !== clampedLateral ||
+    vertical !== clampedVertical ||
+    forward !== depth;
+  out.u =
+    settings.frameMinU + clampedLateral * (settings.frameMaxU - settings.frameMinU);
+  out.v =
+    settings.frameMinV +
+    (1 - clampedVertical) * (settings.frameMaxV - settings.frameMinV);
   out.handSize =
     settings.depthFar + depth * (settings.depthNear - settings.depthFar);
   return out;

@@ -37,6 +37,22 @@ export const LANDMARK = {
 /** How often the teleoperation state machine runs, in ms (~30 Hz). */
 export const TELEOP_INTERVAL = 33;
 
+/** How long the hand must be held still to confirm a calibration sample, in ms. */
+export const CALIBRATION_DWELL = 1200;
+/** ...and for the final pose sample, which doubles as the orientation reference. */
+export const CALIBRATION_POSE_DWELL = 3000;
+/** How much the hand may drift while dwelling before the timer restarts. */
+export const CALIBRATION_STILL_EPSILON = 0.05;
+/**
+ * How far the hand has to travel after a capture before the next step will
+ * start counting. Consecutive steps can share a target - "reach forward" and
+ * "pull back" are both centred - so without this the next sample would be
+ * taken from a hand that never moved.
+ */
+export const CALIBRATION_REARM_DISTANCE = 0.09;
+/** ...or this much change in apparent size, for the reach steps. */
+export const CALIBRATION_REARM_SIZE_RATIO = 0.15;
+
 export type HandControlSettings = {
   /** Centre of the mapped workspace box, in scene units. */
   workspaceCenter: [number, number, number];
@@ -44,6 +60,15 @@ export type HandControlSettings = {
   workspaceSize: [number, number, number];
   /** Flip the lateral / vertical / depth axes respectively. */
   invert: [boolean, boolean, boolean];
+  /**
+   * The part of the frame the hand actually sweeps, as fractions of the preview.
+   * Set by the corner step of the calibration: without it the operator has to
+   * reach the literal edges of the image to reach the edge of the workspace.
+   */
+  frameMinU: number;
+  frameMaxU: number;
+  frameMinV: number;
+  frameMaxV: number;
   /** Normalised image size of the hand (wrist -> middle MCP) at the far end of the workspace. */
   depthFar: number;
   /** ...and at the near end (hand closer to the camera => arm reaches forward). */
@@ -77,19 +102,25 @@ export type HandControlSettings = {
  * one scene unit is roughly 6.7 cm and the arm reaches about 5 units.
  */
 export const DEFAULT_HAND_CONTROL_SETTINGS: HandControlSettings = {
-  workspaceCenter: [2, 2.5, 0],
-  workspaceSize: [7, 5, 6],
+  workspaceCenter: [2, 2.2, 0],
+  workspaceSize: [5, 3.6, 5],
   invert: [false, false, false],
-  depthFar: 0.1,
-  depthNear: 0.35,
+  frameMinU: 0.15,
+  frameMaxU: 0.85,
+  frameMinV: 0.15,
+  frameMaxV: 0.85,
+  depthFar: 0.12,
+  depthNear: 0.3,
   posSmoothing: 0.35,
   rotSmoothing: 0.3,
-  attachPosTol: 0.9,
-  attachAngTol: 45,
+  attachPosTol: 1.1,
+  attachAngTol: 55,
   attachHoldMs: 300,
-  detachPosTol: 1.5,
-  detachHoldMs: 400,
-  handLostMs: 500,
+  // Generous on purpose: the arm stretches towards an unreachable target and
+  // only lets go once it has clearly been abandoned there.
+  detachPosTol: 2.2,
+  detachHoldMs: 900,
+  handLostMs: 900,
   opennessMin: 0.25,
   opennessMax: 1.3,
   orientationOffset: [0, 0, 0, 1],

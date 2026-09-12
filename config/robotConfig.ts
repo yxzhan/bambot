@@ -137,9 +137,11 @@ export const robotConfigMap: { [key: string]: RobotConfig } = {
     },
     handControl: {
       // The robot is scaled by 15 in the scene, so ~1 unit is 6.7 cm and the
-      // arm reaches roughly 5 units from the base.
-      workspaceCenter: [2, 2.5, 0],
-      workspaceSize: [7, 5, 6],
+      // arm reaches roughly 5 units from the base - a box much larger than that
+      // just parks the marker out of reach. The calibration wizard moves the
+      // centre to wherever the gripper is when it finishes.
+      workspaceCenter: [2, 2.2, 0],
+      workspaceSize: [5, 3.6, 5],
     },
     systemPrompt: `You can help control the so-arm100 robot by pressing keyboard keys. Use the keyPress tool to simulate key presses. Each key will be held down for 1 second by default. If the user describes roughly wanting to make it longer or shorter, adjust the duration accordingly.
     The robot can be controlled with the following keys:

@@ -49,6 +49,12 @@ export type MarkerState = {
   attachProgress: number;
 };
 
+export type GripperPose = {
+  position: THREE.Vector3;
+  quaternion: THREE.Quaternion;
+  valid: boolean;
+};
+
 export type TeleopStatus = {
   phase: MarkerPhase;
   attachProgress: number;
@@ -69,6 +75,8 @@ type UseHandTeleopParams = {
   ikConfig?: RobotConfig["ik"];
   jointDetails: JointDetails[];
   updateJointsDegrees: UpdateJointsDegrees;
+  /** While true the loop only tracks the gripper pose - calibration owns the hand. */
+  pausedRef?: React.RefObject<boolean>;
   /** Called by `calibrateOrientation` with the new hand -> gripper offset. */
   onOrientationCalibrated?: (offset: [number, number, number, number]) => void;
 };
@@ -77,6 +85,8 @@ export type UseHandTeleopResult = {
   markerRef: React.RefObject<MarkerState>;
   /** Hand pose that would line up with the gripper, drawn over the preview. */
   guideRef: React.RefObject<HandGuide>;
+  /** Live gripper (tool frame) pose in scene space. */
+  gripperRef: React.RefObject<GripperPose>;
   status: TeleopStatus;
   detach: () => void;
   /** Treats the current hand pose as "aligned with the gripper right now". */
@@ -93,6 +103,7 @@ export function useHandTeleop({
   ikConfig,
   jointDetails,
   updateJointsDegrees,
+  pausedRef,
   onOrientationCalibrated,
 }: UseHandTeleopParams): UseHandTeleopResult {
   const markerRef = useRef<MarkerState>({
@@ -114,6 +125,11 @@ export function useHandTeleop({
     foreshortening: 1,
   });
   const handednessRef = useRef("Right");
+  const gripperRef = useRef<GripperPose>({
+    position: new THREE.Vector3(),
+    quaternion: new THREE.Quaternion(),
+    valid: false,
+  });
 
   const [status, setStatus] = useState<TeleopStatus>({
     phase: "hidden",
@@ -224,8 +240,22 @@ export function useHandTeleop({
       const chain = chainRef.current;
       if (chain) {
         getTcpPose(chain, tcpPosRef.current, tcpQuatRef.current);
+        gripperRef.current.position.copy(tcpPosRef.current);
+        gripperRef.current.quaternion.copy(tcpQuatRef.current);
+        gripperRef.current.valid = true;
       }
       if (pose?.handedness) handednessRef.current = pose.handedness;
+
+      // Calibration drives the hand itself; stay out of its way but keep the
+      // gripper pose above up to date, because it is what calibration samples.
+      if (pausedRef?.current) {
+        if (attachedRef.current) detach("calibrating");
+        marker.visible = false;
+        marker.phase = "hidden";
+        guideRef.current.visible = false;
+        smoothedRef.current = false;
+        return;
+      }
 
       // The guide is what makes latching on possible, so it is drawn whenever
       // the arm is free - including while no hand is in frame at all.
@@ -419,7 +449,7 @@ export function useHandTeleop({
 
     const timer = setInterval(tick, TELEOP_INTERVAL);
     return () => clearInterval(timer);
-  }, [enabled, robotRef, handPoseRef, detach]);
+  }, [enabled, robotRef, handPoseRef, pausedRef, detach]);
 
-  return { markerRef, guideRef, status, detach, calibrateOrientation };
+  return { markerRef, guideRef, gripperRef, status, detach, calibrateOrientation };
 }

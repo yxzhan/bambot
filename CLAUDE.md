@@ -62,13 +62,23 @@ Six control modes, each with its own panel + hook:
 ### Hand Control
 
 `useHandLandmarker` runs MediaPipe's Hand Landmarker over a webcam stream and
-writes the pose into a ref (never state - it updates at camera frame rate).
+writes the pose into a ref (never state - it updates at camera frame rate). The
+pose is anchored at the wrist, the steadiest landmark, so opening and closing
+the hand works the jaws without dragging the arm around.
 `useHandTeleop` maps that pose into a marker in the 3D scene; once the marker
 lines up with the gripper it latches on and `lib/ik.ts` solves the arm joints
 that follow it, which are then pushed through `updateJointsDegrees` like any
 other control mode. Detaching happens when the target leaves the reachable
 workspace (the IK position residual stays above tolerance), when the hand leaves
 the frame, or on Esc.
+
+`useHandCalibration` measures the operator rather than assuming: four corners
+give the part of the frame the hand sweeps, a reach forward and back gives the
+apparent hand sizes that bracket the depth axis, and a three second hold fixes
+both the orientation offset and the workspace centre - so the marker is sitting
+on the gripper the moment calibration ends. `lib/handCalibration.ts` holds that
+maths, free of React. `lib/handGuide.ts` runs the whole mapping backwards to
+draw the target hand pose over the preview.
 
 `lib/ik.ts` is a generic damped least squares solver over a URDF joint chain -
 it works in world space on the live Three.js transforms, so the scene scale and

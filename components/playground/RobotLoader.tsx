@@ -35,6 +35,7 @@ import { HandControl } from "./handControl/HandControl";
 import { HandMarker } from "./handControl/HandMarker";
 import { useHandLandmarker } from "@/hooks/useHandLandmarker";
 import { useHandTeleop } from "@/hooks/useHandTeleop";
+import { useHandCalibration } from "@/hooks/useHandCalibration";
 import {
   DEFAULT_HAND_CONTROL_SETTINGS,
   HandControlSettings,
@@ -193,6 +194,10 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
     clearHandSettingsFromLocalStorage(robotName);
   }, [robotName, handDefaults]);
 
+  // Set by the calibration wizard; the teleop loop reads it to stand down while
+  // the operator is being measured.
+  const calibrationActiveRef = useRef(false);
+
   const handLandmarker = useHandLandmarker(handTrackingEnabled);
   const handTeleop = useHandTeleop({
     enabled: handTrackingEnabled,
@@ -202,8 +207,18 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
     ikConfig: config.ik,
     jointDetails,
     updateJointsDegrees,
+    pausedRef: calibrationActiveRef,
     onOrientationCalibrated: (offset) =>
       updateHandSettings({ ...handSettings, orientationOffset: offset }),
+  });
+  const handCalibration = useHandCalibration({
+    enabled: handTrackingEnabled,
+    handPoseRef: handLandmarker.handPoseRef,
+    gripperRef: handTeleop.gripperRef,
+    settings: handSettings,
+    activeRef: calibrationActiveRef,
+    onComplete: (patch) =>
+      updateHandSettings({ ...handSettings, ...patch }),
   });
 
   const lastRosPositionRef = useRef<Record<string, number>>({});
@@ -461,6 +476,7 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
         onEnabledChange={setHandCameraEnabled}
         landmarker={handLandmarker}
         teleop={handTeleop}
+        calibration={handCalibration}
         settings={handSettings}
         onSettingsChange={updateHandSettings}
         onResetSettings={resetHandSettings}

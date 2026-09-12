@@ -82,8 +82,15 @@ export const GUIDE_CONNECTIONS: [number, number][] = [
 export const GUIDE_PALM = [0, 5, 9, 13, 17];
 
 const _point = new THREE.Vector3();
-const _wrist = new THREE.Vector3();
-const _anchor = new THREE.Vector3(...GUIDE_LANDMARKS[9]);
+const _segment = new THREE.Vector3();
+/** The pose is anchored at the wrist, matching `extractHandPose`. */
+const _anchor = new THREE.Vector3(...GUIDE_LANDMARKS[0]);
+/** Wrist to middle knuckle - the segment `handSize` measures, length 1. */
+const _handSpan = new THREE.Vector3(
+  GUIDE_LANDMARKS[9][0] - GUIDE_LANDMARKS[0][0],
+  GUIDE_LANDMARKS[9][1] - GUIDE_LANDMARKS[0][1],
+  GUIDE_LANDMARKS[9][2] - GUIDE_LANDMARKS[0][2]
+);
 const _hand: WorkspaceHand = { u: 0.5, v: 0.5, handSize: 0.2, clamped: false };
 
 /**
@@ -123,10 +130,10 @@ export function computeHandGuide(
 
   // How much of the wrist-to-knuckle segment is left once projected.
   const mirrorY = handedness === "Left" ? -1 : 1;
-  _wrist
-    .set(-_anchor.x, -_anchor.y * mirrorY, -_anchor.z)
+  _segment
+    .set(_handSpan.x, _handSpan.y * mirrorY, _handSpan.z)
     .applyQuaternion(target.quaternion);
-  target.foreshortening = Math.hypot(_wrist.x, _wrist.y);
+  target.foreshortening = Math.hypot(_segment.x, _segment.y);
 
   target.handedness = handedness;
   target.visible = true;
