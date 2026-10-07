@@ -1,109 +1,149 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Rnd } from "react-rnd";
-import useMeasure from "react-use-measure";
 import { panelStyle } from "@/components/playground/panelStyle";
-import type { RosJointState } from "@/types/ros";
 import type { ROS2ConnectionStatus } from "@/hooks/useROS2";
+import type { TopicFeed, UseROS2BridgeResult } from "@/hooks/useROS2Bridge";
+import { ROS2_ROLES, ROS2Role, ROS2Settings } from "@/lib/ros2Settings";
+import { radiansToDegrees } from "@/lib/utils";
 
 type ROS2PanelProps = {
   show?: boolean;
   onHide: () => void;
   status: ROS2ConnectionStatus;
   error: string | null;
-  jointState: RosJointState | null;
   onConnect: (url: string) => void;
   onDisconnect: () => void;
-  rosControlEnabled?: boolean;
-  onRosControlToggle?: () => void;
   defaultUrl?: string;
+  settings: ROS2Settings;
+  onSettingsChange: (settings: ROS2Settings) => void;
+  bridge: UseROS2BridgeResult;
 };
 
 const DEFAULT_URL = "ws://localhost:9090";
+
+/** A topic counts as live if a message arrived this recently, ms. */
+const STALE_AFTER_MS = 1000;
+
+const ROLE_LABEL: Record<ROS2Role, string> = {
+  commander: "Commander",
+  follower: "Follower",
+  monitor: "Monitor",
+};
+
+const STATUS_STYLE: Record<ROS2ConnectionStatus, { dot: string; text: string; label: string }> = {
+  connected: { dot: "bg-green-400", text: "text-green-400", label: "Connected" },
+  connecting: { dot: "bg-yellow-400 animate-pulse", text: "text-yellow-400", label: "Connecting..." },
+  error: { dot: "bg-red-400", text: "text-red-400", label: "Connection Failed" },
+  disconnected: { dot: "bg-zinc-500", text: "text-zinc-400", label: "Disconnected" },
+};
+
+function roleDescription(role: ROS2Role, settings: ROS2Settings) {
+  switch (role) {
+    case "commander":
+      return (
+        <>
+          Publishes this robot&apos;s joints (moved by leader arm, VR, keyboard…) to{" "}
+          <code>{settings.commandTopic}</code> and shows the follower&apos;s{" "}
+          <code>{settings.stateTopic}</code>.
+        </>
+      );
+    case "follower":
+      return (
+        <>
+          Drives this robot (and its servos, if connected) from{" "}
+          <code>{settings.commandTopic}</code> and publishes its state to{" "}
+          <code>{settings.stateTopic}</code>.
+        </>
+      );
+    case "monitor":
+      return <>Only listens to both topics.</>;
+  }
+}
+
+function TopicBadge({ label, topic, feed, publishing }: {
+  label: string;
+  topic: string;
+  feed: TopicFeed;
+  publishing: boolean;
+}) {
+  const live = feed.receivedAt !== null && performance.now() - feed.receivedAt < STALE_AFTER_MS;
+  return (
+    <div className="flex items-center justify-between text-xs">
+      <span className="text-zinc-400">
+        {label} <code className="text-zinc-300">{topic}</code>
+      </span>
+      {publishing ? (
+        <span className="text-sky-400">publishing</span>
+      ) : (
+        <span className={live ? "text-green-400" : "text-zinc-500"}>
+          {live ? `${Math.round(feed.hz)} Hz` : "no messages"}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function positionOf(feed: TopicFeed, name: string): number | null {
+  const message = feed.message;
+  if (!message) return null;
+  const i = message.name.indexOf(name);
+  const value = i >= 0 ? message.position[i] : undefined;
+  return typeof value === "number" ? radiansToDegrees(value) : null;
+}
 
 export function ROS2Panel({
   show = true,
   onHide,
   status,
   error,
-  jointState,
   onConnect,
   onDisconnect,
-  rosControlEnabled = false,
-  onRosControlToggle,
   defaultUrl = DEFAULT_URL,
+  settings,
+  onSettingsChange,
+  bridge,
 }: ROS2PanelProps) {
-  const [ref, bounds] = useMeasure();
   const [url, setUrl] = useState(defaultUrl);
-  const [position, setPosition] = useState({ x: 0, y: 70 });
+  const [position, setPosition] = useState({ x: 20, y: 20 });
+  const [showTopics, setShowTopics] = useState(false);
+  const [topicDraft, setTopicDraft] = useState({
+    commandTopic: settings.commandTopic,
+    stateTopic: settings.stateTopic,
+  });
 
   useEffect(() => {
-    if (bounds.height > 0) {
-      setPosition({ x: 20, y: 20 });
-    }
-  }, [bounds.height]);
+    setTopicDraft({ commandTopic: settings.commandTopic, stateTopic: settings.stateTopic });
+  }, [settings.commandTopic, settings.stateTopic]);
 
-  const getStatusColor = () => {
-    switch (status) {
-      case "connected":
-        return "text-green-400";
-      case "connecting":
-        return "text-yellow-400";
-      case "error":
-        return "text-red-400";
-      default:
-        return "text-zinc-400";
-    }
-  };
-
-  const getStatusBgColor = () => {
-    switch (status) {
-      case "connected":
-        return "bg-green-400";
-      case "connecting":
-        return "bg-yellow-400 animate-pulse";
-      case "error":
-        return "bg-red-400";
-      default:
-        return "bg-zinc-500";
-    }
-  };
-
-  const getStatusText = () => {
-    switch (status) {
-      case "connected":
-        return "Connected";
-      case "connecting":
-        return "Connecting...";
-      case "error":
-        return "Connection Failed";
-      default:
-        return "Disconnected";
-    }
-  };
+  const statusStyle = STATUS_STYLE[status];
+  const busy = status === "connected" || status === "connecting";
+  const { role } = settings;
 
   const handleConnect = () => {
-    if (url.trim()) {
-      onConnect(url.trim());
-    }
+    if (url.trim()) onConnect(url.trim());
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && status !== "connected" && status !== "connecting") {
-      handleConnect();
+  const commitTopics = () => {
+    const commandTopic = topicDraft.commandTopic.trim();
+    const stateTopic = topicDraft.stateTopic.trim();
+    if (!commandTopic || !stateTopic || commandTopic === stateTopic) {
+      setTopicDraft({ commandTopic: settings.commandTopic, stateTopic: settings.stateTopic });
+      return;
     }
+    onSettingsChange({ ...settings, commandTopic, stateTopic });
   };
 
-  const formatTimestamp = (sec: number, nanosec: number) => {
-    const date = new Date(sec * 1000 + nanosec / 1_000_000);
-    return date.toLocaleTimeString(undefined, {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      fractionalSecondDigits: 3,
-    });
-  };
+  // Rows: union of joint names seen on either topic, in arrival order.
+  const names: string[] = [];
+  for (const message of [bridge.command.message, bridge.state.message]) {
+    for (const name of message?.name ?? []) {
+      if (!names.includes(name)) names.push(name);
+    }
+  }
+  const showCommand = role !== "commander";
+  const showState = role !== "follower";
 
   return (
     <Rnd
@@ -112,8 +152,9 @@ export function ROS2Panel({
       bounds="window"
       className="z-40"
       style={{ display: show ? undefined : "none" }}
+      cancel="input, select, button"
     >
-      <div ref={ref} className={`p-3 w-80 z-50 ${panelStyle}`}>
+      <div className={`p-3 w-80 z-50 ${panelStyle}`}>
         <div className="mb-3 flex justify-between items-center shrink-0">
           <h4 className="font-bold text-lg">ROS 2 Bridge</h4>
           <button
@@ -126,9 +167,9 @@ export function ROS2Panel({
         </div>
 
         <div className="flex items-center gap-3 mb-3">
-          <div className={`w-3 h-3 rounded-full ${getStatusBgColor()}`} />
-          <span className={`text-sm font-medium ${getStatusColor()}`}>{getStatusText()}</span>
-          
+          <div className={`w-3 h-3 rounded-full ${statusStyle.dot}`} />
+          <span className={`text-sm font-medium ${statusStyle.text}`}>{statusStyle.label}</span>
+
           {status === "connected" ? (
             <button
               onClick={onDisconnect}
@@ -153,9 +194,11 @@ export function ROS2Panel({
             type="text"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            onKeyDown={handleKeyPress}
-            disabled={status === "connected" || status === "connecting"}
-            placeholder="ws://localhost:9090"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !busy) handleConnect();
+            }}
+            disabled={busy}
+            placeholder={DEFAULT_URL}
             className="w-full bg-zinc-800 border border-zinc-600 rounded px-2 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-400 disabled:opacity-50 disabled:cursor-not-allowed"
           />
         </div>
@@ -163,6 +206,52 @@ export function ROS2Panel({
         {status === "error" && error && (
           <div className="mb-3 p-2 bg-red-900/30 border border-red-800 rounded text-xs text-red-300">
             {error}
+          </div>
+        )}
+
+        <div className="mb-2">
+          <label className="block text-xs text-zinc-400 mb-1">Role</label>
+          <div className="flex rounded bg-zinc-800 p-0.5">
+            {ROS2_ROLES.map((r) => (
+              <button
+                key={r}
+                onClick={() => onSettingsChange({ ...settings, role: r })}
+                className={`flex-1 rounded px-2 py-1 text-xs ${
+                  role === r ? "bg-sky-600 text-white" : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                {ROLE_LABEL[r]}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-xs text-zinc-400">{roleDescription(role, settings)}</p>
+        </div>
+
+        <button
+          onClick={() => setShowTopics((v) => !v)}
+          className="mb-2 text-xs text-sky-400 hover:underline"
+        >
+          {showTopics ? "Hide topics" : "Topics"}
+        </button>
+        {showTopics && (
+          <div className="mb-3 space-y-1">
+            {(["commandTopic", "stateTopic"] as const).map((key) => (
+              <label key={key} className="flex items-center gap-2 text-xs">
+                <span className="w-16 shrink-0 text-zinc-400">
+                  {key === "commandTopic" ? "Command" : "State"}
+                </span>
+                <input
+                  type="text"
+                  value={topicDraft[key]}
+                  onChange={(e) => setTopicDraft({ ...topicDraft, [key]: e.target.value })}
+                  onBlur={commitTopics}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commitTopics();
+                  }}
+                  className="flex-1 bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-zinc-400"
+                />
+              </label>
+            ))}
           </div>
         )}
 
@@ -176,48 +265,53 @@ export function ROS2Panel({
         )}
 
         {status === "connected" && (
-          <div className="mb-3 space-y-2">
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-zinc-400">Control robot:</label>
-              <button
-                onClick={onRosControlToggle}
-                className={`text-xs px-2 py-1 rounded ${
-                  rosControlEnabled
-                    ? "bg-green-700 text-green-200"
-                    : "bg-zinc-700 text-zinc-400"
-                }`}
-              >
-                {rosControlEnabled ? "Enabled" : "Disabled"}
-              </button>
-            </div>
-          </div>
-        )}
+          <div className="space-y-1 border-t border-zinc-700 pt-2">
+            <TopicBadge
+              label="Command"
+              topic={settings.commandTopic}
+              feed={bridge.command}
+              publishing={role === "commander"}
+            />
+            <TopicBadge
+              label="State"
+              topic={settings.stateTopic}
+              feed={bridge.state}
+              publishing={role === "follower"}
+            />
 
-        {jointState && (
-          <div className="max-h-[40vh] overflow-y-auto">
-            <h5 className="text-sm font-semibold mb-2 text-zinc-300">Joint States</h5>
-            <div className="space-y-1">
-              {jointState.name.map((name, i) => (
-                <div key={name} className="flex justify-between text-xs">
-                  <span className="text-zinc-400">{name}</span>
-                  <span className="text-zinc-200 font-mono">
-                    {jointState.position[i]?.toFixed(4) ?? "N/A"}
-                  </span>
-                </div>
-              ))}
-            </div>
-            {jointState.header && (
-              <div className="mt-3 pt-2 border-t border-zinc-700">
-                <p className="text-xs text-zinc-500">
-                  Time: {formatTimestamp(jointState.header.stamp.sec, jointState.header.stamp.nanosec)}
-                </p>
-              </div>
+            {names.length > 0 && (
+              <table className="mt-2 w-full text-xs">
+                <thead>
+                  <tr className="text-zinc-500">
+                    <th className="text-left font-normal">joint (deg)</th>
+                    {showCommand && <th className="text-right font-normal">command</th>}
+                    {showState && <th className="text-right font-normal">state</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {names.map((name) => {
+                    const cmd = positionOf(bridge.command, name);
+                    const st = positionOf(bridge.state, name);
+                    return (
+                      <tr key={name}>
+                        <td className="text-zinc-400">{name}</td>
+                        {showCommand && (
+                          <td className="text-right font-mono text-zinc-200">
+                            {cmd === null ? "—" : cmd.toFixed(1)}
+                          </td>
+                        )}
+                        {showState && (
+                          <td className="text-right font-mono text-zinc-200">
+                            {st === null ? "—" : st.toFixed(1)}
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             )}
           </div>
-        )}
-
-        {status === "connected" && !jointState && (
-          <p className="text-sm text-zinc-400">Waiting for joint state data...</p>
         )}
       </div>
     </Rnd>

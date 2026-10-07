@@ -8,7 +8,6 @@ import {
   useRef,
   Suspense,
 } from "react";
-import { degreesToRadians } from "@/lib/utils";
 import { useSearchParams } from "next/navigation";
 import { robotConfigMap } from "@/config/robotConfig";
 import * as THREE from "three";
@@ -16,6 +15,14 @@ import { Html, useProgress } from "@react-three/drei";
 import { ControlPanel } from "./keyboardControl/KeyboardControl";
 import { useRobotControl } from "@/hooks/useRobotControl";
 import { useROS2 } from "@/hooks/useROS2";
+import { useROS2Bridge } from "@/hooks/useROS2Bridge";
+import {
+  getROS2SettingsFromLocalStorage,
+  ROS2_ROLES,
+  ROS2Role,
+  ROS2Settings,
+  setROS2SettingsToLocalStorage,
+} from "@/lib/ros2Settings";
 import { Canvas } from "@react-three/fiber";
 import { ChatControl } from "./chatControl/ChatControl";
 import LeaderControl from "../playground/leaderControl/LeaderControl";
@@ -118,7 +125,13 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
   // The camera only starts once the operator opts in, and stops again as soon
   // as the panel is closed.
   const [handCameraEnabled, setHandCameraEnabled] = useState(false);
-  const [rosControlEnabled, setRosControlEnabled] = useState(false);
+  // ?ros2role=follower overrides the stored role, so a launcher can open the
+  // page ready for its job.
+  const [ros2Settings, setROS2Settings] = useState<ROS2Settings>(() => {
+    const stored = getROS2SettingsFromLocalStorage();
+    const role = searchParams.get("ros2role") as ROS2Role | null;
+    return role && ROS2_ROLES.includes(role) ? { ...stored, role } : stored;
+  });
   const config = robotConfigMap[robotName];
 
   const handDefaults: HandControlSettings = useMemo(
@@ -149,14 +162,13 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
   });
   const vrSession = useVRSession(glRef);
 
+  const ros2 = useROS2();
   const {
     status: ros2Status,
     error: ros2Error,
-    jointState: ros2JointState,
     connect: connectROS2,
     disconnect: disconnectROS2,
-    publishJointState,
-  } = useROS2({ subscribeEnabled: rosControlEnabled });
+  } = ros2;
 
   // Get leader robot servo IDs (exclude continuous joint types)
   const leaderServoIds = jointDetails
@@ -262,58 +274,23 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
     setVRSettings(getVRSettingsFromLocalStorage(robotName));
   }, [robotName]);
 
-  const lastRosPositionRef = useRef<Record<string, number>>({});
-
-  useEffect(() => {
-    if (!rosControlEnabled || !ros2JointState || jointDetails.length === 0) return;
-    if (ros2JointState.name.length === 0 || ros2JointState.position.length === 0) return;
-
-    const updates: { servoId: number; value: number }[] = [];
-
-    for (const joint of jointDetails) {
-      if (joint.jointType !== "revolute") continue;
-
-      const rosIndex = ros2JointState.name.indexOf(joint.name);
-      if (rosIndex === -1) continue;
-
-      const radians = ros2JointState.position[rosIndex];
-      const lastPos = lastRosPositionRef.current[joint.name] ?? 0;
-      if (Math.abs(radians - lastPos) < 0.001) continue;
-
-      lastRosPositionRef.current[joint.name] = radians;
-
-      const degrees = radians * (180 / Math.PI);
-      updates.push({ servoId: joint.servoId, value: degrees });
-    }
-
-    if (updates.length > 0) {
-      updateJointsDegrees(updates);
-    }
-  }, [ros2JointState, rosControlEnabled, jointDetails, updateJointsDegrees]);
-
-  // Keep a ref to the latest jointStates so the broadcast interval
-  // doesn't restart on every state change (which would stall it during key holds).
+  // Keep a ref to the latest jointStates so the ROS publish interval doesn't
+  // restart on every state change (which would stall it during key holds).
   const jointStatesRef = useRef(jointStates);
   jointStatesRef.current = jointStates;
 
-  // Broadcast follower joint state to ROS at ~30Hz
-  useEffect(() => {
-    if (ros2Status !== "connected" || jointDetails.length === 0) return;
-    const timer = setInterval(() => {
-      const names: string[] = [];
-      const positions: number[] = [];
-      for (const js of jointStatesRef.current) {
-        if (typeof js.degrees === "number") {
-          names.push(js.name);
-          positions.push(degreesToRadians(js.degrees));
-        }
-      }
-      if (names.length > 0) {
-        publishJointState({ topicName: "/joint_states", jointNames: names, positions });
-      }
-    }, 33);
-    return () => clearInterval(timer);
-  }, [ros2Status, jointDetails.length, publishJointState]);
+  const ros2Bridge = useROS2Bridge({
+    ros: ros2,
+    settings: ros2Settings,
+    jointDetails,
+    jointStatesRef,
+    updateJointsDegrees,
+  });
+
+  const updateROS2Settings = useCallback((next: ROS2Settings) => {
+    setROS2Settings(next);
+    setROS2SettingsToLocalStorage(next);
+  }, []);
 
   // Functions to handle panel state changes and localStorage updates
   const toggleControlPanel = () => {
@@ -563,12 +540,12 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
         onHide={hideROS2Panel}
         status={ros2Status}
         error={ros2Error}
-        jointState={ros2JointState}
         onConnect={connectROS2}
         onDisconnect={disconnectROS2}
-        rosControlEnabled={rosControlEnabled}
-        onRosControlToggle={() => setRosControlEnabled((prev) => !prev)}
         defaultUrl={ros2WsUrl}
+        settings={ros2Settings}
+        onSettingsChange={updateROS2Settings}
+        bridge={ros2Bridge}
       />
 
       <div className="absolute bottom-5 left-0 right-0">

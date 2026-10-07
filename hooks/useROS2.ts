@@ -7,38 +7,48 @@ import type { RosJointState } from "@/types/ros";
 export type ROS2ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
 
 export type UseROS2Options = {
-  jointStateTopic?: string;
   connectionTimeout?: number;
-  subscribeEnabled?: boolean;
 };
 
 export type UseROS2Return = {
   status: ROS2ConnectionStatus;
   error: string | null;
-  jointState: RosJointState | null;
   connect: (url: string) => void;
   disconnect: () => void;
-  publishJointCommand: (positions: { name: string; position: number }[]) => void;
-  publishJointState: (opts: { topicName: string; jointNames: string[]; positions: number[] }) => void;
+  /**
+   * Subscribes to a `sensor_msgs/JointState` topic while connected.
+   *
+   * @returns An unsubscribe function, or null when not connected.
+   */
+  subscribeJointState: (
+    topicName: string,
+    callback: (message: RosJointState) => void
+  ) => (() => void) | null;
+  /** Publishes positions (radians) as a `sensor_msgs/JointState` message. */
+  publishJointState: (topicName: string, names: string[], positions: number[]) => void;
 };
 
-const DEFAULT_JOINT_STATE_TOPIC = "/joint_states";
 const DEFAULT_CONNECTION_TIMEOUT = 5000;
-const MIN_PUBLISH_INTERVAL_MS = 33; // ~30Hz
 
+/** Wall-clock time as a ROS 2 `builtin_interfaces/Time`. */
+export function rosNow(): { sec: number; nanosec: number } {
+  const ms = Date.now();
+  return { sec: Math.floor(ms / 1000), nanosec: (ms % 1000) * 1_000_000 };
+}
+
+/**
+ * Connection to a rosbridge WebSocket server, plus joint state publish and
+ * subscribe primitives. What gets published where is decided by
+ * `useROS2Bridge`, which knows this page's role.
+ */
 export function useROS2(options: UseROS2Options = {}): UseROS2Return {
-  const jointStateTopic = options.jointStateTopic ?? DEFAULT_JOINT_STATE_TOPIC;
   const connectionTimeout = options.connectionTimeout ?? DEFAULT_CONNECTION_TIMEOUT;
-  const subscribeEnabled = options.subscribeEnabled ?? false;
 
   const [status, setStatus] = useState<ROS2ConnectionStatus>("disconnected");
   const [error, setError] = useState<string | null>(null);
-  const [jointState, setJointState] = useState<RosJointState | null>(null);
 
   const rosRef = useRef<ROSLIB.Ros | null>(null);
-  const jointTopicRef = useRef<ROSLIB.Topic<ROSLIB.Message> | null>(null);
   const publishTopicsRef = useRef<Map<string, ROSLIB.Topic>>(new Map());
-  const lastPublishTimeRef = useRef<Map<string, number>>(new Map());
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isMountedRef = useRef<boolean>(true);
 
@@ -52,17 +62,14 @@ export function useROS2(options: UseROS2Options = {}): UseROS2Return {
   const disconnect = useCallback(() => {
     clearConnectionTimeout();
 
-    if (jointTopicRef.current) {
+    for (const topic of publishTopicsRef.current.values()) {
       try {
-        jointTopicRef.current.unsubscribe();
+        topic.unadvertise();
       } catch (e) {
-        console.warn("Error unsubscribing from topic:", e);
+        console.warn("Error unadvertising topic:", e);
       }
-      jointTopicRef.current = null;
     }
-
     publishTopicsRef.current.clear();
-    lastPublishTimeRef.current.clear();
 
     if (rosRef.current) {
       try {
@@ -75,7 +82,6 @@ export function useROS2(options: UseROS2Options = {}): UseROS2Return {
 
     if (isMountedRef.current) {
       setStatus("disconnected");
-      setJointState(null);
     }
   }, [clearConnectionTimeout]);
 
@@ -114,10 +120,8 @@ export function useROS2(options: UseROS2Options = {}): UseROS2Return {
         if (!isMountedRef.current) return;
 
         rosRef.current = null;
-        jointTopicRef.current = null;
         publishTopicsRef.current.clear();
-        lastPublishTimeRef.current.clear();
-        setStatus("disconnected");
+        setStatus((prev) => (prev === "error" ? prev : "disconnected"));
       });
 
       rosRef.current = ros;
@@ -135,7 +139,6 @@ export function useROS2(options: UseROS2Options = {}): UseROS2Return {
             console.warn("Error closing ROS connection on timeout:", e);
           }
           rosRef.current = null;
-          jointTopicRef.current = null;
         }
       }, connectionTimeout);
 
@@ -148,112 +151,59 @@ export function useROS2(options: UseROS2Options = {}): UseROS2Return {
     }
   }, [connectionTimeout, clearConnectionTimeout, disconnect]);
 
-  // Subscribe to /joint_states only when connected AND subscribeEnabled is true
-  useEffect(() => {
-    if (status !== "connected" || !subscribeEnabled || !rosRef.current) {
-      if (jointTopicRef.current) {
+  const subscribeJointState = useCallback(
+    (topicName: string, callback: (message: RosJointState) => void) => {
+      if (!rosRef.current) return null;
+
+      const topic = new ROSLIB.Topic({
+        ros: rosRef.current,
+        name: topicName,
+        messageType: "sensor_msgs/JointState",
+      });
+      topic.subscribe((message) => {
+        if (!isMountedRef.current) return;
+        callback(message as RosJointState);
+      });
+
+      return () => {
         try {
-          jointTopicRef.current.unsubscribe();
+          topic.unsubscribe();
         } catch (e) {
           console.warn("Error unsubscribing from topic:", e);
         }
-        jointTopicRef.current = null;
-      }
-      setJointState(null);
-      return;
-    }
+      };
+    },
+    []
+  );
 
-    const topic = new ROSLIB.Topic({
-      ros: rosRef.current,
-      name: jointStateTopic,
-      messageType: "sensor_msgs/JointState",
-    });
+  const publishJointState = useCallback(
+    (topicName: string, names: string[], positions: number[]) => {
+      if (!rosRef.current) return;
 
-    topic.subscribe((message) => {
-      if (!isMountedRef.current) return;
       try {
-        setJointState(message as RosJointState);
+        let topic = publishTopicsRef.current.get(topicName);
+        if (!topic) {
+          topic = new ROSLIB.Topic({
+            ros: rosRef.current,
+            name: topicName,
+            messageType: "sensor_msgs/JointState",
+          });
+          publishTopicsRef.current.set(topicName, topic);
+        }
+
+        topic.publish(new ROSLIB.Message({
+          header: { stamp: rosNow(), frame_id: "" },
+          name: names,
+          position: positions,
+          velocity: [],
+          effort: [],
+        }));
       } catch (e) {
-        console.warn("Error processing joint state message:", e);
+        console.warn("Error publishing joint state:", e);
       }
-    });
-
-    jointTopicRef.current = topic;
-
-    return () => {
-      try {
-        topic.unsubscribe();
-      } catch (e) {
-        console.warn("Error unsubscribing from topic:", e);
-      }
-      jointTopicRef.current = null;
-    };
-  }, [status, subscribeEnabled, jointStateTopic]);
-
-  const publishJointState = useCallback((opts: {
-    topicName: string;
-    jointNames: string[];
-    positions: number[];
-  }) => {
-    if (!rosRef.current) return;
-
-    // Rate limit to ~30Hz per topic
-    const now = Date.now();
-    const lastTime = lastPublishTimeRef.current.get(opts.topicName) ?? 0;
-    if (now - lastTime < MIN_PUBLISH_INTERVAL_MS) return;
-    lastPublishTimeRef.current.set(opts.topicName, now);
-
-    try {
-      let topic = publishTopicsRef.current.get(opts.topicName);
-      if (!topic) {
-        topic = new ROSLIB.Topic({
-          ros: rosRef.current,
-          name: opts.topicName,
-          messageType: "sensor_msgs/JointState",
-        });
-        publishTopicsRef.current.set(opts.topicName, topic);
-      }
-
-      topic.publish(new ROSLIB.Message({
-        header: { stamp: { sec: 0, nanosec: 0 }, frame_id: "base_link" },
-        name: opts.jointNames,
-        position: opts.positions,
-        velocity: new Array(opts.positions.length).fill(0),
-        effort: new Array(opts.positions.length).fill(0),
-      }));
-    } catch (e) {
-      console.warn("Error publishing joint state:", e);
-    }
-  }, []);
-
-  const publishJointCommand = useCallback((positions: { name: string; position: number }[]) => {
-    if (!rosRef.current) {
-      console.warn("Cannot publish: ROS not connected");
-      return;
-    }
-
-    try {
-      const commandTopic = new ROSLIB.Topic({
-        ros: rosRef.current,
-        name: "/joint_trajectory_controller/joint_trajectory",
-        messageType: "trajectory_msgs/JointTrajectory",
-      });
-
-      const trajectoryMsg = new ROSLIB.Message({
-        joint_names: positions.map((p) => p.name),
-        points: [
-          {
-            positions: positions.map((p) => p.position),
-            time_from_start: { sec: 0, nanosec: 500000000 },
-          },
-        ],
-      });
-
-      commandTopic.publish(trajectoryMsg);
-    } catch (e) {
-      console.warn("Error publishing joint command:", e);
-    }
-  }, []);
+    },
+    []
+  );
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -266,10 +216,9 @@ export function useROS2(options: UseROS2Options = {}): UseROS2Return {
   return {
     status,
     error,
-    jointState,
     connect,
     disconnect,
-    publishJointCommand,
+    subscribeJointState,
     publishJointState,
   };
 }
