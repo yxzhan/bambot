@@ -74,6 +74,7 @@ components/
 ├── playground/            # Robot 3D control components
 │   ├── ros2Control/       # ROS2 bridge panel
 │   ├── handControl/       # Webcam hand tracking control
+│   ├── vrControl/         # WebXR controller teleoperation
 │   ├── keyboardControl/   # Keyboard control
 │   └── *.tsx
 ├── ui/                   # shadcn/ui primitives

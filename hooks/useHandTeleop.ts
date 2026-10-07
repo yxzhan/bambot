@@ -27,7 +27,7 @@ import {
   quaternionAngle,
   solveIK,
 } from "@/lib/ik";
-import { radiansToDegrees } from "@/lib/utils";
+import { buildJointUpdates } from "@/lib/ikCommands";
 import { UpdateJointsDegrees } from "@/hooks/useRobotControl";
 import type { JointDetails } from "@/components/playground/RobotScene";
 import type { RobotConfig } from "@/config/robotConfig";
@@ -409,30 +409,13 @@ export function useHandTeleop({
 
       // Command the best-effort solution, even inside the out-of-reach grace
       // window - the arm then visibly stretches towards the marker.
-      const details = jointDetailsRef.current;
-      const updates: { servoId: number; value: number }[] = [];
-      const chainJoints = ikConfigRef.current?.chainJoints ?? [];
-      for (let i = 0; i < chainJoints.length; i++) {
-        const detail = details.find((d) => d.name === chainJoints[i]);
-        if (!detail) continue;
-        updates.push({
-          servoId: detail.servoId,
-          value: radiansToDegrees(result.angles[i]),
-        });
-      }
-
       const gripperName = ikConfigRef.current?.gripperJoint;
-      if (gripperName) {
-        const detail = details.find((d) => d.name === gripperName);
-        if (detail) {
-          const lower = Number(detail.limit?.lower ?? 0);
-          const upper = Number(detail.limit?.upper ?? Math.PI / 2);
-          updates.push({
-            servoId: detail.servoId,
-            value: radiansToDegrees(lower + openness * (upper - lower)),
-          });
-        }
-      }
+      const updates = buildJointUpdates(
+        ikConfigRef.current?.chainJoints ?? [],
+        result.angles,
+        jointDetailsRef.current,
+        gripperName ? { joint: gripperName, openness } : undefined
+      );
 
       if (updates.length > 0) {
         updateJointsDegreesRef.current(updates);

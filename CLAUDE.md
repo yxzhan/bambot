@@ -44,7 +44,7 @@ All robot definitions live in `config/robotConfig.ts` as entries in `robotConfig
 
 `components/playground/RobotLoader.tsx` is the top-level container that renders the 3D scene and all control panels. Panels are independently draggable (via `react-rnd`) and their visibility is toggled by button components in `controlButtons/`. Panel visibility persists in `localStorage` via `lib/panelSettings.ts`.
 
-Six control modes, each with its own panel + hook:
+Seven control modes, each with its own panel + hook:
 
 | Panel | Hook | Purpose |
 |-------|------|---------|
@@ -54,6 +54,7 @@ Six control modes, each with its own panel + hook:
 | `recordControl/` | (in `useRobotControl`) | Record/replay joint sequences at 20ms intervals |
 | `ros2Control/` | `useROS2` | ROS2 bridge via rosbridge WebSocket |
 | `handControl/` | `useHandLandmarker` + `useHandTeleop` | Webcam hand tracking → IK → end effector |
+| `vrControl/` | `useVRSession` + `useVRTeleop` | WebXR controllers → IK → end effector |
 
 ### 3D Visualization
 
@@ -84,6 +85,29 @@ draw the target hand pose over the preview.
 it works in world space on the live Three.js transforms, so the scene scale and
 rotation need no special handling. Each robot declares its chain in
 `robotConfig.ts` via `ik: { chainJoints, tcpLinkName, gripperJoint }`.
+
+### VR Control
+
+`useVRSession` (outside the canvas) checks WebXR support and starts an
+`immersive-vr` or `immersive-ar` (passthrough) session on the renderer that
+`RobotLoader` captures in `onCreated`; react-three-fiber switches to the XR
+render loop by itself. `useVRTeleop` runs inside the canvas, because controller
+poses only exist on the `XRFrame` passed to `useFrame`.
+
+For the session the camera is parented to an XR rig carrying the robot's scene
+scale, so the robot appears life size and controller motion maps 1:1. The rig
+is placed so the operator stands behind the arm, looking along its reach
+(recomputed on A / X). Control is a clutch: while grip is held the gripper
+target is the anchor TCP pose plus the controller's motion since engaging, so
+nothing has to be lined up and the arm never jumps; the trigger drives the
+gripper once it has been brought to the gripper's current opening. IK runs
+without random restarts and joint steps are rate limited; once the target is
+out of reach the arm stops following and holds its last reachable pose (the
+gripper still follows the trigger) until the hand brings the target back. The maths is in `lib/vrTeleop.ts`.
+
+WebXR needs a secure context (HTTPS or localhost). The Quest Browser has no
+Web Serial, so moving the physical arm needs desktop Chrome with a PC VR
+runtime (Quest Link / Air Link / SteamVR), or a ROS 2 relay.
 
 ### State Management
 

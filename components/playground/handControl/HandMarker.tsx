@@ -72,24 +72,6 @@ export function HandMarker({ markerRef }: HandMarkerProps) {
         />
       </mesh>
 
-      {/* Two stubs standing in for the jaws, along the marker's local X axis */}
-      <mesh position={[0.45, 0.18, 0]}>
-        <boxGeometry args={[0.7, 0.08, 0.24]} />
-        <meshStandardMaterial
-          color={PHASE_COLORS.free}
-          transparent
-          opacity={0.35}
-        />
-      </mesh>
-      <mesh position={[0.45, -0.18, 0]}>
-        <boxGeometry args={[0.7, 0.08, 0.24]} />
-        <meshStandardMaterial
-          color={PHASE_COLORS.free}
-          transparent
-          opacity={0.35}
-        />
-      </mesh>
-
       <mesh ref={ringRef} visible={false}>
         <torusGeometry args={[0.55, 0.045, 8, 32]} />
         <meshBasicMaterial ref={ringMaterialRef} color={PHASE_COLORS.near} />

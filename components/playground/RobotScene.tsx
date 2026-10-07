@@ -31,6 +31,8 @@ type RobotSceneProps = {
   onRobotLoaded?: (robot: URDFRobot) => void;
   /** Extra objects rendered inside the scene, such as the hand marker. */
   children?: ReactNode;
+  /** Hidden in passthrough AR, where the real floor and table show through. */
+  showGround?: boolean;
 };
 
 export function RobotScene({
@@ -41,6 +43,7 @@ export function RobotScene({
   jointStates,
   onRobotLoaded,
   children,
+  showGround = true,
 }: RobotSceneProps) {
   const { scene } = useThree();
   const robotRef = useRef<URDFRobot | null>(null);
@@ -125,7 +128,7 @@ export function RobotScene({
   return (
     <>
       <OrbitControls target={orbitTarget || [0, 0.1, 0.1]} />
-      <GroundPlane />
+      {showGround && <GroundPlane />}
       <directionalLight
         castShadow
         intensity={1}

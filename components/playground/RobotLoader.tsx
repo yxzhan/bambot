@@ -45,6 +45,17 @@ import {
   getHandSettingsFromLocalStorage,
   setHandSettingsToLocalStorage,
 } from "@/lib/handSettings";
+import VRControlButton from "./controlButtons/VRControlButton";
+import { VRControl } from "./vrControl/VRControl";
+import { VRTeleop } from "./vrControl/VRTeleop";
+import { useVRSession } from "@/hooks/useVRSession";
+import type { VRTeleopStatus } from "@/hooks/useVRTeleop";
+import { VRControlSettings } from "@/config/vrControlConfig";
+import {
+  clearVRSettingsFromLocalStorage,
+  getVRSettingsFromLocalStorage,
+  setVRSettingsToLocalStorage,
+} from "@/lib/vrSettings";
 import type { URDFRobot } from "urdf-loader";
 import {
   getPanelStateFromLocalStorage,
@@ -101,6 +112,9 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
   const [showHandControl, setShowHandControl] = useState(() => {
     return getPanelStateFromLocalStorage("handControl", robotName) ?? false;
   });
+  const [showVRControl, setShowVRControl] = useState(() => {
+    return getPanelStateFromLocalStorage("vrControl", robotName) ?? false;
+  });
   // The camera only starts once the operator opts in, and stops again as soon
   // as the panel is closed.
   const [handCameraEnabled, setHandCameraEnabled] = useState(false);
@@ -121,6 +135,19 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
     })
   );
   const robotRef = useRef<URDFRobot | null>(null);
+  const glRef = useRef<THREE.WebGLRenderer | null>(null);
+  const [vrSettings, setVRSettings] = useState<VRControlSettings>(() =>
+    getVRSettingsFromLocalStorage(robotName)
+  );
+  const [vrStatus, setVRStatus] = useState<VRTeleopStatus>({
+    phase: "off",
+    activeHand: null,
+    controllers: [],
+    posError: 0,
+    gripperOpenness: 1,
+    gripperFollowing: false,
+  });
+  const vrSession = useVRSession(glRef);
 
   const {
     status: ros2Status,
@@ -220,6 +247,20 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
     onComplete: (patch) =>
       updateHandSettings({ ...handSettings, ...patch }),
   });
+
+  // --- VR controller control ------------------------------------------------
+  const updateVRSettings = useCallback(
+    (next: VRControlSettings) => {
+      setVRSettings(next);
+      setVRSettingsToLocalStorage(robotName, next);
+    },
+    [robotName]
+  );
+
+  const resetVRSettings = useCallback(() => {
+    clearVRSettingsFromLocalStorage(robotName);
+    setVRSettings(getVRSettingsFromLocalStorage(robotName));
+  }, [robotName]);
 
   const lastRosPositionRef = useRef<Record<string, number>>({});
 
@@ -366,6 +407,19 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
     setPanelStateToLocalStorage("handControl", false, robotName);
   };
 
+  const toggleVRControl = () => {
+    setShowVRControl((prev) => {
+      const newState = !prev;
+      setPanelStateToLocalStorage("vrControl", newState, robotName);
+      return newState;
+    });
+  };
+
+  const hideVRControl = () => {
+    setShowVRControl(false);
+    setPanelStateToLocalStorage("vrControl", false, robotName);
+  };
+
   const hideROS2Panel = () => {
     setShowROS2Panel(false);
     setPanelStateToLocalStorage("ros2Panel", false, robotName);
@@ -380,8 +434,9 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
           position: camera.position,
           fov: camera.fov,
         }}
-        onCreated={({ scene }) => {
+        onCreated={({ scene, gl }) => {
           scene.background = new THREE.Color(0x263238);
+          glRef.current = gl;
         }}
       >
         <Suspense fallback={<Loader />}>
@@ -392,8 +447,17 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
             setJointDetails={setJointDetails}
             jointStates={jointStates}
             onRobotLoaded={handleRobotLoaded}
+            showGround={vrSession.activeMode !== "immersive-ar"}
           >
             <HandMarker markerRef={handTeleop.markerRef} />
+            <VRTeleop
+              robotRef={robotRef}
+              settings={vrSettings}
+              ikConfig={config.ik}
+              jointDetails={jointDetails}
+              updateJointsDegrees={updateJointsDegrees}
+              onStatus={setVRStatus}
+            />
           </RobotScene>
         </Suspense>
       </Canvas>
@@ -482,6 +546,17 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
         onResetSettings={resetHandSettings}
       />
 
+      {/* VR Control overlay */}
+      <VRControl
+        show={showVRControl}
+        onHide={hideVRControl}
+        session={vrSession}
+        status={vrStatus}
+        settings={vrSettings}
+        onSettingsChange={updateVRSettings}
+        onResetSettings={resetVRSettings}
+      />
+
       {/* ROS 2 Panel overlay */}
       <ROS2Panel
         show={showROS2Panel}
@@ -522,6 +597,10 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
             <HandControlButton
               showControlPanel={showHandControl}
               onToggleControlPanel={toggleHandControl}
+            />
+            <VRControlButton
+              showControlPanel={showVRControl}
+              onToggleControlPanel={toggleVRControl}
             />
             <ROS2Button
               showControlPanel={showROS2Panel}
