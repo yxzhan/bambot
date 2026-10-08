@@ -6,6 +6,7 @@ import { panelStyle } from "@/components/playground/panelStyle";
 import { VRControlSettings } from "@/config/vrControlConfig";
 import type { UseVRSessionResult, VRMode } from "@/hooks/useVRSession";
 import type { VRTeleopPhase, VRTeleopStatus } from "@/hooks/useVRTeleop";
+import { HeadsetShare } from "./HeadsetShare";
 
 type VRControlProps = {
   show?: boolean;
@@ -139,6 +140,8 @@ export function VRControl({
 
         <div className="flex-1 space-y-3 overflow-y-auto pr-1">
           <SupportNotice session={session} />
+
+          {!session.activeMode && <HeadsetShare />}
 
           <div className="flex flex-wrap gap-2">
             {session.activeMode ? (

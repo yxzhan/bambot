@@ -105,6 +105,12 @@ without random restarts and joint steps are rate limited; once the target is
 out of reach the arm stops following and holds its last reachable pose (the
 gripper still follows the trigger) until the hand brings the target back. The maths is in `lib/vrTeleop.ts`.
 
+The VR panel can also put the page on a headset without typing its address:
+`lib/shareLink.ts` (ported from cramera's `core/share-link.js`) asks the
+pairing service at `https://vr.aicor.dev` (override with `?pair=`) for a short
+code that the headset redeems for this page's link. The link carries the
+page's `?token=` (for Jupyter's proxy) and `ros2role=leader`.
+
 WebXR needs a secure context (HTTPS or localhost). The Quest Browser has no
 Web Serial, so moving the physical arm needs desktop Chrome with a PC VR
 runtime (Quest Link / Air Link / SteamVR), or a ROS 2 relay.
