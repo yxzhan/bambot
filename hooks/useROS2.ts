@@ -26,6 +26,16 @@ export type UseROS2Return = {
   ) => (() => void) | null;
   /** Publishes positions (radians) as a `sensor_msgs/JointState` message. */
   publishJointState: (topicName: string, names: string[], positions: number[]) => void;
+  /**
+   * Publishes a `sensor_msgs/CompressedImage`. `base64Data` is the encoded
+   * image, base64 - rosbridge turns it back into the message's uint8[] data.
+   */
+  publishCompressedImage: (
+    topicName: string,
+    frameId: string,
+    format: string,
+    base64Data: string
+  ) => void;
 };
 
 const DEFAULT_CONNECTION_TIMEOUT = 5000;
@@ -176,20 +186,22 @@ export function useROS2(options: UseROS2Options = {}): UseROS2Return {
     []
   );
 
+  /** The advertised topic for publishing, created on first use. */
+  const publishTopic = useCallback((topicName: string, messageType: string) => {
+    if (!rosRef.current) return null;
+    let topic = publishTopicsRef.current.get(topicName);
+    if (!topic) {
+      topic = new ROSLIB.Topic({ ros: rosRef.current, name: topicName, messageType });
+      publishTopicsRef.current.set(topicName, topic);
+    }
+    return topic;
+  }, []);
+
   const publishJointState = useCallback(
     (topicName: string, names: string[], positions: number[]) => {
-      if (!rosRef.current) return;
-
       try {
-        let topic = publishTopicsRef.current.get(topicName);
-        if (!topic) {
-          topic = new ROSLIB.Topic({
-            ros: rosRef.current,
-            name: topicName,
-            messageType: "sensor_msgs/JointState",
-          });
-          publishTopicsRef.current.set(topicName, topic);
-        }
+        const topic = publishTopic(topicName, "sensor_msgs/JointState");
+        if (!topic) return;
 
         topic.publish(new ROSLIB.Message({
           header: { stamp: rosNow(), frame_id: "" },
@@ -202,7 +214,24 @@ export function useROS2(options: UseROS2Options = {}): UseROS2Return {
         console.warn("Error publishing joint state:", e);
       }
     },
-    []
+    [publishTopic]
+  );
+
+  const publishCompressedImage = useCallback(
+    (topicName: string, frameId: string, format: string, base64Data: string) => {
+      try {
+        const topic = publishTopic(topicName, "sensor_msgs/CompressedImage");
+        if (!topic) return;
+        topic.publish(new ROSLIB.Message({
+          header: { stamp: rosNow(), frame_id: frameId },
+          format,
+          data: base64Data,
+        }));
+      } catch (e) {
+        console.warn("Error publishing image:", e);
+      }
+    },
+    [publishTopic]
   );
 
   useEffect(() => {
@@ -220,5 +249,6 @@ export function useROS2(options: UseROS2Options = {}): UseROS2Return {
     disconnect,
     subscribeJointState,
     publishJointState,
+    publishCompressedImage,
   };
 }

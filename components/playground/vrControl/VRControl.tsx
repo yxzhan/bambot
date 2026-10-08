@@ -141,7 +141,9 @@ export function VRControl({
         <div className="flex-1 space-y-3 overflow-y-auto pr-1">
           <SupportNotice session={session} />
 
-          {!session.activeMode && <HeadsetShare />}
+          {/* Pairing is for getting this page onto a headset, so it only shows
+              where WebXR is missing - never on the headset itself. */}
+          {session.checked && session.supported.length === 0 && <HeadsetShare />}
 
           <div className="flex flex-wrap gap-2">
             {session.activeMode ? (

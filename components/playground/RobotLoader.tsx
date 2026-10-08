@@ -513,6 +513,8 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
       <CameraPanel
         show={showWebcamPanel}
         onHide={hideWebcamPanel}
+        rosConnected={ros2Status === "connected"}
+        publishCompressedImage={ros2.publishCompressedImage}
       />
 
       {/* Hand Control overlay */}

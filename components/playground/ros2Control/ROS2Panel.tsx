@@ -29,6 +29,12 @@ type ROS2PanelProps = {
 
 const DEFAULT_URL = "ws://localhost:9090";
 
+/** Panel width (Tailwind w-80) and its margin from the window edge, px. */
+const PANEL_WIDTH = 320;
+const PANEL_MARGIN = 20;
+/** Clears the page header, whose strip would otherwise cover the title row. */
+const PANEL_TOP = 70;
+
 /** A topic counts as live if a message arrived this recently, ms. */
 const STALE_AFTER_MS = 1000;
 
@@ -112,7 +118,11 @@ export function ROS2Panel({
   bridge,
 }: ROS2PanelProps) {
   const [url, setUrl] = useState(defaultUrl);
-  const [position, setPosition] = useState({ x: 20, y: 20 });
+  // Opens in the top-right corner.
+  const [position, setPosition] = useState(() => ({
+    x: Math.max(PANEL_MARGIN, window.innerWidth - PANEL_WIDTH - PANEL_MARGIN),
+    y: PANEL_TOP,
+  }));
   const [showTopics, setShowTopics] = useState(false);
   const [topicDraft, setTopicDraft] = useState({
     commandTopic: settings.commandTopic,

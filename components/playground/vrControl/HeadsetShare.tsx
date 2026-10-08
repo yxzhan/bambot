@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   headsetLink,
   linkWarning,
@@ -12,7 +12,6 @@ import {
 } from "@/lib/shareLink";
 
 type PairingState =
-  | { status: "idle" }
   | { status: "loading" }
   | { status: "ready"; pairing: Pairing }
   | { status: "error"; message: string };
@@ -25,6 +24,7 @@ function formatRemaining(ms: number) {
 /**
  * "Open on a headset": a short pairing code from the pairing service, which
  * the headset redeems for this page's link, plus the link itself to copy.
+ * The code is requested as soon as this is shown; "New code" asks again.
  */
 export function HeadsetShare() {
   const { service, target, warning } = useMemo(() => {
@@ -42,7 +42,7 @@ export function HeadsetShare() {
     };
   }, []);
 
-  const [state, setState] = useState<PairingState>({ status: "idle" });
+  const [state, setState] = useState<PairingState>({ status: "loading" });
   const [now, setNow] = useState(() => Date.now());
   const [copied, setCopied] = useState<string | null>(null);
   // A code that arrives for a superseded request is dropped.
@@ -55,7 +55,7 @@ export function HeadsetShare() {
     return () => clearInterval(timer);
   }, [expiresAt]);
 
-  const pair = async () => {
+  const pair = useCallback(async () => {
     const request = ++requestRef.current;
     setState({ status: "loading" });
     try {
@@ -70,7 +70,14 @@ export function HeadsetShare() {
         message: error instanceof Error ? error.message : String(error),
       });
     }
-  };
+  }, [service, target]);
+
+  useEffect(() => {
+    pair();
+    return () => {
+      requestRef.current++; // drop a code that arrives after unmount
+    };
+  }, [pair]);
 
   const copy = async () => {
     try {
@@ -88,49 +95,41 @@ export function HeadsetShare() {
     <div className="space-y-2 rounded bg-white/5 p-2">
       <div className="text-xs font-semibold text-zinc-300">Open on a headset</div>
 
-      {state.status === "ready" ? (
-        <div className="text-center">
-          <div className="text-xs text-zinc-400">
-            In the headset&apos;s browser open{" "}
-            <span className="font-mono text-sky-400">{typedAddress(service)}</span> and enter
-          </div>
-          <div
-            className={`my-1 font-mono text-4xl font-bold tracking-[0.4em] ${
-              expired ? "text-zinc-500 line-through" : "text-white"
-            }`}
-          >
-            {state.pairing.code}
-          </div>
-          <div className="text-xs text-zinc-500">
-            {expiresAt === null
-              ? ""
-              : expired
-                ? "this code has expired"
-                : `valid for ${formatRemaining(expiresAt - now)}`}
-          </div>
-        </div>
-      ) : (
+      <div className="text-center">
         <div className="text-xs text-zinc-400">
-          Get a short code to type into{" "}
-          <span className="font-mono text-sky-400">{typedAddress(service)}</span> on the
-          headset, instead of typing this page&apos;s address.
+          In the headset&apos;s browser open{" "}
+          <span className="font-mono text-sky-400">{typedAddress(service)}</span> and enter
         </div>
-      )}
-
-      {state.status === "error" && (
-        <div className="text-xs text-red-400">No pairing code: {state.message}</div>
-      )}
+        <div
+          className={`my-1 font-mono text-4xl font-bold tracking-[0.4em] ${
+            expired ? "text-zinc-500 line-through" : "text-white"
+          }`}
+        >
+          {state.status === "ready"
+            ? state.pairing.code
+            : state.status === "loading"
+              ? "····"
+              : "––––"}
+        </div>
+        <div className={`text-xs ${state.status === "error" ? "text-red-400" : "text-zinc-500"}`}>
+          {state.status === "loading"
+            ? `asking ${typedAddress(service)} for a code…`
+            : state.status === "error"
+              ? `No pairing code: ${state.message}`
+              : expiresAt === null
+                ? ""
+                : expired
+                  ? "this code has expired"
+                  : `valid for ${formatRemaining(expiresAt - now)}`}
+        </div>
+      </div>
 
       <button
         onClick={pair}
         disabled={state.status === "loading"}
         className="rounded bg-sky-500/80 px-3 py-1 text-xs hover:bg-sky-500 disabled:opacity-50"
       >
-        {state.status === "loading"
-          ? "Asking for a code…"
-          : state.status === "idle"
-            ? "Get pairing code"
-            : "↻ New code"}
+        ↻ New code
       </button>
 
       <div className="flex gap-1">
