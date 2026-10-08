@@ -56,6 +56,20 @@ Seven control modes, each with its own panel + hook:
 | `handControl/` | `useHandLandmarker` + `useHandTeleop` | Webcam hand tracking → IK → end effector |
 | `vrControl/` | `useVRSession` + `useVRTeleop` | WebXR controllers → IK → end effector |
 
+### Control Authority
+
+Every mode drives the arm through `updateJoints*`, so `useControlAuthority`
+referees: exactly one source (`manual` = keyboard / sliders / chat, `leader`,
+`replay`, `vr`, `ros` follower, `hand`) owns the arm, and each mode gets
+`control.writers[source]`, which drop writes unless that source owns it. Never
+pass the raw `updateJoints*` from `useRobotControl` to a control mode.
+
+Ownership only moves on an explicit action - connecting the leader arm,
+starting a replay, entering VR, connecting as a ROS follower, or a panel's
+"Take control" (`ControlBadge`) - never because input happened to arrive. When
+the owner stops, control falls back to manual. A replay that loses control
+stops; the other modes stay connected with their writes ignored.
+
 ### 3D Visualization
 
 `components/playground/RobotScene.tsx` uses `@react-three/fiber` + `urdf-loader` to render the robot from `public/URDFs/so101.urdf`. Joint states are updated by mutating Three.js joint objects directly.

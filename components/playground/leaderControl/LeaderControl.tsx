@@ -4,6 +4,8 @@ import { Rnd } from "react-rnd";
 import useMeasure from "react-use-measure";
 import { panelStyle } from "@/components/playground/panelStyle";
 import { LeaderConnectionHelpDialog } from "./LeaderConnectionHelpDialog";
+import { ControlBadge } from "../ControlBadge";
+import type { ControlAuthority } from "@/hooks/useControlAuthority";
 
 /**
  * props:
@@ -22,12 +24,15 @@ const LeaderControl = ({
   onSync,
   show = true,
   onHide,
+  control,
 }: {
   leaderControl: { isConnected: boolean; connectLeader: () => Promise<void>; disconnectLeader: () => Promise<void>; getPositions: () => Promise<Map<number, number>> };
   jointDetails: { servoId: number; name: string; jointType: string }[];
   onSync: (leaderAngles: { servoId: number; angle: number }[]) => void;
   show?: boolean;
   onHide: () => void;
+  /** The leader only drives the arm while it holds control. */
+  control?: ControlAuthority;
 }) => {
   const revoluteJoints = jointDetails.filter((j) => j.jointType === "revolute");
   const { isConnected, connectLeader, disconnectLeader, getPositions } =
@@ -120,6 +125,12 @@ const LeaderControl = ({
             ×
           </button>
         </h3>
+
+        {control && isConnected && (
+          <div className="mb-3">
+            <ControlBadge source="leader" control={control} />
+          </div>
+        )}
 
         {revoluteJoints.length === 0 ? (
           <div className="mt-4 text-center text-gray-400">

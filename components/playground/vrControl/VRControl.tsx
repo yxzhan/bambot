@@ -7,6 +7,8 @@ import { VRControlSettings } from "@/config/vrControlConfig";
 import type { UseVRSessionResult, VRMode } from "@/hooks/useVRSession";
 import type { VRTeleopPhase, VRTeleopStatus } from "@/hooks/useVRTeleop";
 import { HeadsetShare } from "./HeadsetShare";
+import { ControlBadge } from "../ControlBadge";
+import type { ControlAuthority } from "@/hooks/useControlAuthority";
 
 type VRControlProps = {
   show?: boolean;
@@ -16,6 +18,7 @@ type VRControlProps = {
   settings: VRControlSettings;
   onSettingsChange: (settings: VRControlSettings) => void;
   onResetSettings: () => void;
+  control?: ControlAuthority;
 };
 
 const PHASE_TEXT: Record<VRTeleopPhase, string> = {
@@ -99,6 +102,7 @@ export function VRControl({
   settings,
   onSettingsChange,
   onResetSettings,
+  control,
 }: VRControlProps) {
   const [position, setPosition] = useState({ x: 20, y: 70 });
   const [size, setSize] = useState({ width: 360, height: 520 });
@@ -165,6 +169,8 @@ export function VRControl({
               ))
             )}
           </div>
+
+          {control && session.activeMode && <ControlBadge source="vr" control={control} />}
 
           {session.error && (
             <div className="rounded bg-red-500/10 px-2 py-1 text-xs text-red-400">

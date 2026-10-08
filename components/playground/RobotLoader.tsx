@@ -15,6 +15,8 @@ import { Html, useProgress } from "@react-three/drei";
 import { ControlPanel } from "./keyboardControl/KeyboardControl";
 import { useRobotControl } from "@/hooks/useRobotControl";
 import { useROS2 } from "@/hooks/useROS2";
+import { useControlAuthority } from "@/hooks/useControlAuthority";
+import { ControlIndicator } from "./ControlBadge";
 import { useROS2Bridge } from "@/hooks/useROS2Bridge";
 import {
   getROS2SettingsFromLocalStorage,
@@ -219,6 +221,16 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
     updateJointDetails(jointDetails);
   }, [jointDetails, updateJointDetails]);
 
+  // One input drives the arm at a time; each mode below gets writers that
+  // only reach the arm while it holds control (see useControlAuthority).
+  const control = useControlAuthority({
+    updateJointDegrees,
+    updateJointsDegrees,
+    updateJointSpeed,
+    updateJointsSpeed,
+  });
+  const { claim, release, writers } = control;
+
   // --- Webcam hand control ------------------------------------------------
   const handTrackingEnabled = showHandControl && handCameraEnabled;
 
@@ -251,7 +263,7 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
     settings: handSettings,
     ikConfig: config.ik,
     jointDetails,
-    updateJointsDegrees,
+    updateJointsDegrees: writers.hand.updateJointsDegrees,
     pausedRef: calibrationActiveRef,
     onOrientationCalibrated: (offset) =>
       updateHandSettings({ ...handSettings, orientationOffset: offset }),
@@ -290,8 +302,29 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
     settings: ros2Settings,
     jointDetails,
     jointStatesRef,
-    updateJointsDegrees,
+    updateJointsDegrees: writers.ros.updateJointsDegrees,
   });
+
+  // Starting a mode is the explicit action that hands it control; stopping it
+  // gives control back to the keyboard if it still had it.
+  const followingRos = ros2Status === "connected" && ros2Settings.role === "follower";
+  useEffect(() => {
+    if (followingRos) claim("ros");
+    else release("ros");
+  }, [followingRos, claim, release]);
+  useEffect(() => {
+    if (leaderControl.isConnected) claim("leader");
+    else release("leader");
+  }, [leaderControl.isConnected, claim, release]);
+  const inVR = vrSession.activeMode !== null;
+  useEffect(() => {
+    if (inVR) claim("vr");
+    else release("vr");
+  }, [inVR, claim, release]);
+  useEffect(() => {
+    if (handTrackingEnabled) claim("hand");
+    else release("hand");
+  }, [handTrackingEnabled, claim, release]);
 
   const updateROS2Settings = useCallback((next: ROS2Settings) => {
     setROS2Settings(next);
@@ -438,7 +471,7 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
               settings={vrSettings}
               ikConfig={config.ik}
               jointDetails={jointDetails}
-              updateJointsDegrees={updateJointsDegrees}
+              updateJointsDegrees={writers.vr.updateJointsDegrees}
               onStatus={setVRStatus}
             />
           </RobotScene>
@@ -448,11 +481,12 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
       <ControlPanel
         show={showControlPanel}
         onHide={hideControlPanel}
-        updateJointsSpeed={updateJointsSpeed}
+        updateJointsSpeed={writers.manual.updateJointsSpeed}
         jointStates={jointStates}
-        updateJointDegrees={updateJointDegrees}
-        updateJointsDegrees={updateJointsDegrees}
-        updateJointSpeed={updateJointSpeed}
+        updateJointDegrees={writers.manual.updateJointDegrees}
+        updateJointsDegrees={writers.manual.updateJointsDegrees}
+        updateJointSpeed={writers.manual.updateJointSpeed}
+        control={control}
         isConnected={isConnected}
         connectRobot={connectRobot}
         disconnectRobot={disconnectRobot}
@@ -471,6 +505,7 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
         onHide={hideLeaderControl}
         leaderControl={leaderControl}
         jointDetails={jointDetails}
+        control={control}
         onSync={(leaderAngles: { servoId: number; angle: number }[]) => {
           const revoluteJoints = jointDetails.filter(
             (j) => j.jointType === "revolute"
@@ -478,7 +513,7 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
           const revoluteServoIds = new Set(
             revoluteJoints.map((j) => j.servoId)
           );
-          updateJointsDegrees(
+          writers.leader.updateJointsDegrees(
             leaderAngles
               .filter((la) => revoluteServoIds.has(la.servoId))
               .map(
@@ -500,8 +535,9 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
         startRecording={startRecording}
         stopRecording={stopRecording}
         clearRecordData={clearRecordData}
-        updateJointsDegrees={updateJointsDegrees}
-        updateJointsSpeed={updateJointsSpeed}
+        updateJointsDegrees={writers.replay.updateJointsDegrees}
+        updateJointsSpeed={writers.replay.updateJointsSpeed}
+        control={control}
         jointDetails={jointDetails}
         leaderControl={{
           isConnected: leaderControl.isConnected,
@@ -544,6 +580,7 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
         settings={vrSettings}
         onSettingsChange={updateVRSettings}
         onResetSettings={resetVRSettings}
+        control={control}
       />
 
       {/* ROS 2 Panel overlay */}
@@ -558,9 +595,11 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
         settings={ros2Settings}
         onSettingsChange={updateROS2Settings}
         bridge={ros2Bridge}
+        control={control}
       />
 
       <div className="absolute bottom-5 left-0 right-0">
+        <ControlIndicator control={control} />
         <div className="flex justify-center items-center">
           <div className="flex gap-2 max-w-md">
             <LeaderControlButton

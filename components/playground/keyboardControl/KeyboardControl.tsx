@@ -15,6 +15,8 @@ import { RobotConfig } from "@/config/robotConfig";
 import useMeasure from "react-use-measure";
 import { panelStyle } from "@/components/playground/panelStyle";
 import { RobotConnectionHelpDialog } from "./RobotConnectionHelpDialog";
+import { ControlBadge } from "../ControlBadge";
+import type { ControlAuthority } from "@/hooks/useControlAuthority";
 
 // const baudRate = 1000000; // Define baud rate for serial communication - Keep if needed elsewhere, remove if only for UI
 
@@ -34,6 +36,8 @@ type ControlPanelProps = {
   compoundMovements?: RobotConfig["compoundMovements"]; // Use type from robotConfig
   onHide?: () => void; // 新增 onHide 属性
   show?: boolean; // 新增 show 属性
+  /** Keys, sliders and chat only reach the arm while manual control holds it. */
+  control?: ControlAuthority;
 };
 
 export function ControlPanel({
@@ -49,6 +53,7 @@ export function ControlPanel({
   disconnectRobot,
   keyboardControlMap, // Destructure new prop
   compoundMovements, // Destructure new prop
+  control,
 }: ControlPanelProps) {
   const [connectionStatus, setConnectionStatus] = useState<
     "idle" | "connecting" | "disconnecting"
@@ -119,6 +124,12 @@ export function ControlPanel({
             ×
           </button>
         </h3>
+
+        {control && (
+          <div className="mb-3">
+            <ControlBadge source="manual" control={control} />
+          </div>
+        )}
 
         {/* Revolute Joints Table */}
         {revoluteJoints.length > 0 && (

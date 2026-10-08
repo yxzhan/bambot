@@ -4,6 +4,7 @@ import useMeasure from "react-use-measure";
 import { panelStyle } from "@/components/playground/panelStyle";
 import { RECORDING_INTERVAL } from "@/config/uiConfig";
 import { ReplayHelpDialog } from "./ReplayHelpDialog";
+import type { ControlAuthority } from "@/hooks/useControlAuthority";
 
 interface RecordControlProps {
   show: boolean;
@@ -20,6 +21,8 @@ interface RecordControlProps {
     isConnected: boolean;
     disconnectLeader: () => Promise<void>;
   };
+  /** A replay takes control of the arm, and stops if it loses it. */
+  control?: ControlAuthority;
 }
 
 type RecordingState = "idle" | "recording" | "paused" | "stopped" | "replaying";
@@ -36,6 +39,7 @@ const RecordControl = ({
   updateJointsSpeed,
   jointDetails = [],
   leaderControl,
+  control,
 }: RecordControlProps) => {
   const [recordingState, setRecordingState] = useState<RecordingState>("idle");
   const [recordingTime, setRecordingTime] = useState(0);
@@ -43,6 +47,13 @@ const RecordControl = ({
   const [ref, bounds] = useMeasure();
   const [replayProgress, setReplayProgress] = useState(0);
   const isReplayingRef = useRef(false);
+
+  // Another input taking control ends the replay rather than leaving it
+  // playing into dropped writes.
+  const owner = control?.owner;
+  useEffect(() => {
+    if (owner !== undefined && owner !== "replay") isReplayingRef.current = false;
+  }, [owner]);
 
   // Sync recording state with hook
   useEffect(() => {
@@ -101,6 +112,7 @@ const RecordControl = ({
       }
     }
 
+    control?.claim("replay");
     setRecordingState("replaying");
     isReplayingRef.current = true;
     setReplayProgress(0);
@@ -142,6 +154,7 @@ const RecordControl = ({
     }
 
     isReplayingRef.current = false;
+    control?.release("replay");
     setRecordingState("stopped");
     setReplayProgress(0);
   };

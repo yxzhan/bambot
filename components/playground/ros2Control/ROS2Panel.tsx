@@ -13,6 +13,8 @@ import {
   ROS2Settings,
 } from "@/lib/ros2Settings";
 import { radiansToDegrees } from "@/lib/utils";
+import { ControlBadge } from "../ControlBadge";
+import type { ControlAuthority } from "@/hooks/useControlAuthority";
 
 type ROS2PanelProps = {
   show?: boolean;
@@ -25,6 +27,8 @@ type ROS2PanelProps = {
   settings: ROS2Settings;
   onSettingsChange: (settings: ROS2Settings) => void;
   bridge: UseROS2BridgeResult;
+  /** A follower only applies commands while it holds control of the arm. */
+  control?: ControlAuthority;
 };
 
 const DEFAULT_URL = "ws://localhost:9090";
@@ -116,6 +120,7 @@ export function ROS2Panel({
   settings,
   onSettingsChange,
   bridge,
+  control,
 }: ROS2PanelProps) {
   const [url, setUrl] = useState(defaultUrl);
   // Opens in the top-right corner.
@@ -297,6 +302,12 @@ export function ROS2Panel({
             <code className="block bg-zinc-800 p-2 rounded mt-1 text-zinc-400">
               ros2 launch rosbridge_server rosbridge_websocket_launch.xml
             </code>
+          </div>
+        )}
+
+        {control && status === "connected" && role === "follower" && (
+          <div className="mb-2">
+            <ControlBadge source="ros" control={control} />
           </div>
         )}
 
