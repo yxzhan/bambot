@@ -44,6 +44,16 @@ export type UpdateJointsSpeed = (
 
 export type RecordData = number[][]; // Array of arrays representing servo positions/speeds
 
+/**
+ * Acceleration written to every position-mode servo on connect (STS3215
+ * register 41, units of 100 steps/s^2, i.e. ~8.8 deg/s^2; 0 means unlimited).
+ * Control modes stream a new target every ~33 ms, and with no acceleration
+ * limit the servo starts and stops hard on each one, which shows as jitter.
+ * Lower is smoother but lags more. The register lives in RAM, so it is lost on
+ * power-off and written again on every connect.
+ */
+const SERVO_ACCELERATION = 50;
+
 export function useRobotControl(
   initialJointDetails: JointDetails[],
   urdfInitJointAngles?: { [key: string]: number }
@@ -111,6 +121,19 @@ export function useRobotControl(
             const positionInDegrees = servoPositionToAngle(servoPosition);
             initialPos.push(positionInDegrees);
             newStates[i].degrees = positionInDegrees;
+
+            try {
+              await scsServoSDK.writeAcceleration(
+                jointDetails[i].servoId,
+                SERVO_ACCELERATION
+              );
+            } catch (error) {
+              // Not fatal: the servo still works, just without the smoothing.
+              console.warn(
+                `Failed to set acceleration on servo ${jointDetails[i].servoId}:`,
+                error
+              );
+            }
 
             // Enable torque for revolute servos
             await scsServoSDK.writeTorqueEnable(jointDetails[i].servoId, true);
