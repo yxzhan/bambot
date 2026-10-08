@@ -8,6 +8,7 @@ import {
   useRef,
   Suspense,
 } from "react";
+import { degreesToRadians } from "@/lib/utils";
 import { useSearchParams } from "next/navigation";
 import { robotConfigMap } from "@/config/robotConfig";
 import * as THREE from "three";
@@ -16,6 +17,12 @@ import { ControlPanel } from "./keyboardControl/KeyboardControl";
 import { useRobotControl } from "@/hooks/useRobotControl";
 import { useROS2 } from "@/hooks/useROS2";
 import { useControlAuthority } from "@/hooks/useControlAuthority";
+import { LeaderAngle, useLeaderSync } from "@/hooks/useLeaderSync";
+import {
+  getLeaderSettingsFromLocalStorage,
+  LeaderSettings,
+  setLeaderSettingsToLocalStorage,
+} from "@/lib/leaderSettings";
 import { ControlIndicator } from "./ControlBadge";
 import { useROS2Bridge } from "@/hooks/useROS2Bridge";
 import {
@@ -185,6 +192,13 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
 
   // Initialize leader robot control hook
   const leaderControl = useLeaderRobotControl(leaderServoIds);
+  const [leaderSettings, setLeaderSettings] = useState<LeaderSettings>(() =>
+    getLeaderSettingsFromLocalStorage()
+  );
+  const updateLeaderSettings = useCallback((next: LeaderSettings) => {
+    setLeaderSettings(next);
+    setLeaderSettingsToLocalStorage(next);
+  }, []);
 
   if (!config) {
     throw new Error(`Robot configuration for "${robotName}" not found.`);
@@ -297,12 +311,46 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
   const jointStatesRef = useRef(jointStates);
   jointStatesRef.current = jointStates;
 
+  // In ROS mode each leader reading is published as it arrives, so the
+  // bridge's fixed-rate timer stands down while the leader drives the arm.
+  const leaderPublishing =
+    leaderSettings.mode === "ros" && leaderControl.isConnected && control.owner === "leader";
+
   const ros2Bridge = useROS2Bridge({
     ros: ros2,
     settings: ros2Settings,
     jointDetails,
     jointStatesRef,
     updateJointsDegrees: writers.ros.updateJointsDegrees,
+    eventDriven: leaderPublishing,
+  });
+
+  const leaderPublishingRef = useRef(leaderPublishing);
+  leaderPublishingRef.current = leaderPublishing;
+  const handleLeaderReading = useCallback(
+    (angles: LeaderAngle[]) => {
+      const revolute = new Map(
+        jointDetails.filter((j) => j.jointType === "revolute").map((j) => [j.servoId, j.name])
+      );
+      const updates = angles.filter((a) => revolute.has(a.servoId));
+      writers.leader.updateJointsDegrees(
+        updates.map(({ servoId, angle }) => ({ servoId, value: angle }))
+      );
+      if (leaderPublishingRef.current) {
+        ros2Bridge.publishCommands(
+          updates.map((a) => revolute.get(a.servoId)!),
+          updates.map((a) => degreesToRadians(a.angle))
+        );
+      }
+    },
+    [jointDetails, writers, ros2Bridge.publishCommands]
+  );
+  const leaderSync = useLeaderSync({
+    isConnected: leaderControl.isConnected,
+    getPositions: leaderControl.getPositions,
+    servoIds: leaderServoIds,
+    hz: leaderSettings.hz,
+    onReading: handleLeaderReading,
   });
 
   // Starting a mode is the explicit action that hands it control; stopping it
@@ -506,23 +554,24 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
         leaderControl={leaderControl}
         jointDetails={jointDetails}
         control={control}
-        onSync={(leaderAngles: { servoId: number; angle: number }[]) => {
-          const revoluteJoints = jointDetails.filter(
-            (j) => j.jointType === "revolute"
-          );
-          const revoluteServoIds = new Set(
-            revoluteJoints.map((j) => j.servoId)
-          );
-          writers.leader.updateJointsDegrees(
-            leaderAngles
-              .filter((la) => revoluteServoIds.has(la.servoId))
-              .map(
-                ({ servoId, angle }: { servoId: number; angle: number }) => ({
-                  servoId,
-                  value: angle,
-                })
-              )
-          );
+        angles={leaderSync.angles}
+        measuredHz={leaderSync.measuredHz}
+        settings={leaderSettings}
+        onSettingsChange={updateLeaderSettings}
+        followerConnected={isConnected}
+        ros={{
+          status: ros2Status,
+          role: ros2Settings.role,
+          commandTopic: ros2Settings.commandTopic,
+          followerState: ros2Bridge.state,
+          connectAsLeader: () => {
+            if (ros2Settings.role !== "leader") {
+              updateROS2Settings({ ...ros2Settings, role: "leader" });
+            }
+            if (ros2Status !== "connected" && ros2Status !== "connecting") {
+              connectROS2(ros2WsUrl);
+            }
+          },
         }}
       />
 

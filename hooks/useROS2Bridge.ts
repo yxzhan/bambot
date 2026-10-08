@@ -14,7 +14,7 @@
 
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { RosJointState } from "@/types/ros";
 import type { UseROS2Return } from "@/hooks/useROS2";
 import type { JointState, UpdateJointsDegrees } from "@/hooks/useRobotControl";
@@ -45,6 +45,14 @@ export type UseROS2BridgeResult = {
   command: TopicFeed;
   /** The follower's state as seen on the network (leader and monitor only). */
   state: TopicFeed;
+  /**
+   * Publishes commands right now, as the leader. For inputs that produce
+   * readings at their own pace (the leader arm): publishing each reading as it
+   * arrives avoids the duplicated / dropped frames and extra latency of
+   * sampling it with the fixed-rate timer. Does nothing unless this page is a
+   * connected leader.
+   */
+  publishCommands: (names: string[], positions: number[]) => void;
 };
 
 type UseROS2BridgeParams = {
@@ -53,6 +61,11 @@ type UseROS2BridgeParams = {
   jointDetails: JointDetails[];
   jointStatesRef: React.RefObject<JointState[]>;
   updateJointsDegrees: UpdateJointsDegrees;
+  /**
+   * True while commands are published through `publishCommands`; the leader's
+   * fixed-rate timer then stands down so it does not interleave stale frames.
+   */
+  eventDriven?: boolean;
 };
 
 const EMPTY_FEED: TopicFeed = { message: null, hz: 0, receivedAt: null };
@@ -69,6 +82,7 @@ export function useROS2Bridge({
   jointDetails,
   jointStatesRef,
   updateJointsDegrees,
+  eventDriven = false,
 }: UseROS2BridgeParams): UseROS2BridgeResult {
   const { status, subscribeJointState, publishJointState } = ros;
   const connected = status === "connected";
@@ -92,6 +106,7 @@ export function useROS2Bridge({
 
   useEffect(() => {
     if (!connected || !publishTopic || !hasJoints) return;
+    if (role === "leader" && eventDriven) return;
     const timer = setInterval(() => {
       const names: string[] = [];
       const positions: number[] = [];
@@ -104,7 +119,26 @@ export function useROS2Bridge({
       if (names.length > 0) publishJointState(publishTopic, names, positions);
     }, 1000 / publishHz);
     return () => clearInterval(timer);
-  }, [connected, publishTopic, publishHz, hasJoints, jointStatesRef, publishJointState]);
+  }, [
+    connected,
+    publishTopic,
+    publishHz,
+    hasJoints,
+    jointStatesRef,
+    publishJointState,
+    role,
+    eventDriven,
+  ]);
+
+  const canPublishCommands = connected && role === "leader";
+  const publishCommands = useCallback(
+    (names: string[], positions: number[]) => {
+      if (canPublishCommands && names.length > 0) {
+        publishJointState(commandTopic, names, positions);
+      }
+    },
+    [canPublishCommands, commandTopic, publishJointState]
+  );
 
   // --- subscribe: commands (follower drives its robot; monitor watches) ----
   const listenToCommands = role === "follower" || role === "monitor";
@@ -179,5 +213,5 @@ export function useROS2Bridge({
     return () => clearInterval(timer);
   }, []);
 
-  return { command, state };
+  return { command, state, publishCommands };
 }

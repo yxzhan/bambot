@@ -56,6 +56,20 @@ Seven control modes, each with its own panel + hook:
 | `handControl/` | `useHandLandmarker` + `useHandTeleop` | Webcam hand tracking → IK → end effector |
 | `vrControl/` | `useVRSession` + `useVRTeleop` | WebXR controllers → IK → end effector |
 
+### Leader Arm
+
+`useLeaderSync` reads the leader arm in a read-then-wait loop (no setInterval,
+so reads never overlap on the serial port and re-renders never restart it) at
+the panel's rate, 5-60 Hz, and reports the rate actually achieved. Note that
+feetech.js `syncReadPositions` reads servos one by one, so each reading is one
+serial round trip per servo and the adapter's latency bounds the real rate.
+
+Two modes (`lib/leaderSettings.ts`): **direct** drives the follower arm on the
+same browser; **ros** additionally publishes every reading on `/joint_commands`
+as it arrives (`useROS2Bridge.publishCommands`), and the bridge's fixed-rate
+timer stands down meanwhile (`eventDriven`) so frames are neither duplicated
+nor dropped.
+
 ### Control Authority
 
 Every mode drives the arm through `updateJoints*`, so `useControlAuthority`
