@@ -20,8 +20,13 @@ import {
   setCamerasToLocalStorage,
 } from "@/lib/cameraSettings";
 import { CameraTile } from "./CameraTile";
+import { remoteCameraName, RemoteCameraTile } from "./RemoteCameraTile";
 
 const JPEG_QUALITY = 0.8;
+/** How often the ROS graph is asked for other devices' camera topics, ms. */
+const DISCOVERY_INTERVAL_MS = 3000;
+const IMAGE_TYPE = "sensor_msgs/msg/CompressedImage";
+const CAMERA_TOPIC_PATTERN = /^\/.+\/image_raw\/compressed$/;
 
 type VideoDevice = { deviceId: string; label: string };
 
@@ -45,6 +50,12 @@ type CameraPanelProps = {
     format: string,
     base64Data: string
   ) => void;
+  subscribeCompressedImage: (
+    topicName: string,
+    callback: (base64Data: string, format: string) => void,
+    throttleMs?: number
+  ) => (() => void) | null;
+  listTopicsForType: (messageType: string) => Promise<string[]>;
 };
 
 /** Lists the video inputs, asking for camera permission first so they have labels. */
@@ -62,6 +73,8 @@ export function CameraPanel({
   onHide,
   rosConnected,
   publishCompressedImage,
+  subscribeCompressedImage,
+  listTopicsForType,
 }: CameraPanelProps) {
   const [position, setPosition] = useState({ x: 20, y: 70 });
   const [cameras, setCameras] = useState<CameraConfig[]>(() => getCamerasFromLocalStorage());
@@ -70,6 +83,8 @@ export function CameraPanel({
   const [publishing, setPublishing] = useState(false);
   const [publishHz, setPublishHz] = useState(() => getCameraPublishHzFromLocalStorage());
   const canvasesRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
+  /** Camera image topics on the ROS graph that this page is not publishing. */
+  const [remoteTopics, setRemoteTopics] = useState<string[]>([]);
 
   const updateCameras = (next: CameraConfig[]) => {
     setCameras(next);
@@ -91,7 +106,7 @@ export function CameraPanel({
 
   // --- adding a camera ------------------------------------------------------
   const openForm = async () => {
-    const taken = cameras.map((c) => c.name);
+    const taken = [...cameras.map((c) => c.name), ...remoteNames];
     setForm({
       devices: null,
       deviceId: "",
@@ -131,7 +146,7 @@ export function CameraPanel({
     const device = form.devices?.find((d) => d.deviceId === form.deviceId);
     const error =
       (!device ? "Choose a camera" : null) ??
-      cameraNameError(name, cameras.map((c) => c.name)) ??
+      cameraNameError(name, [...cameras.map((c) => c.name), ...remoteNames]) ??
       cameraSizeError(width) ??
       cameraSizeError(height);
     if (error || !device) {
@@ -179,6 +194,44 @@ export function CameraPanel({
   // Cameras run while they are on screen or being published, and are
   // released otherwise.
   const active = show || publishing;
+
+  // --- other devices' cameras -------------------------------------------------
+  // A camera only exists on the device it is plugged into, so other devices'
+  // cameras are found through what they publish. Topics this page publishes
+  // itself are left out.
+  const publishingRef = useRef(publishing);
+  publishingRef.current = publishing;
+  const listTopicsRef = useRef(listTopicsForType);
+  listTopicsRef.current = listTopicsForType;
+
+  useEffect(() => {
+    if (!show || !rosConnected) {
+      setRemoteTopics([]);
+      return;
+    }
+    let cancelled = false;
+    const discover = async () => {
+      try {
+        const topics = await listTopicsRef.current(IMAGE_TYPE);
+        if (cancelled) return;
+        const own = publishingRef.current
+          ? new Set(camerasRef.current.map((c) => cameraTopic(c.name)))
+          : new Set<string>();
+        const next = topics.filter((t) => CAMERA_TOPIC_PATTERN.test(t) && !own.has(t)).sort();
+        setRemoteTopics((prev) => (prev.join() === next.join() ? prev : next));
+      } catch {
+        // rosapi missing or busy: keep the last list.
+      }
+    };
+    discover();
+    const timer = setInterval(discover, DISCOVERY_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [show, rosConnected, publishing]);
+
+  const remoteNames = remoteTopics.map(remoteCameraName);
 
   return (
     <Rnd
@@ -350,9 +403,38 @@ export function CameraPanel({
                 scale={scale}
                 registerCanvas={registerCanvas}
                 onRemove={removeCamera}
+                warning={
+                  !publishing && remoteNames.includes(camera.name)
+                    ? "Another device already publishes this name - rename before publishing"
+                    : null
+                }
               />
             ))}
           </div>
+
+          {rosConnected && (
+            <div className="space-y-2 border-t border-zinc-700 pt-2">
+              <div className="text-xs font-semibold text-zinc-300">
+                Other devices ({remoteTopics.length})
+              </div>
+              {remoteTopics.length === 0 ? (
+                <div className="text-xs text-zinc-500">
+                  Cameras another device publishes to ROS show up here.
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-3">
+                  {remoteTopics.map((topic) => (
+                    <RemoteCameraTile
+                      key={topic}
+                      topic={topic}
+                      scale={scale}
+                      subscribe={subscribeCompressedImage}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </Rnd>

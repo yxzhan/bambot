@@ -36,6 +36,21 @@ export type UseROS2Return = {
     format: string,
     base64Data: string
   ) => void;
+  /**
+   * Subscribes to a `sensor_msgs/CompressedImage` topic. The callback gets the
+   * image as base64 (rosbridge's encoding of uint8[]) and its format.
+   *
+   * @param throttleMs Minimum time between messages, enforced by rosbridge,
+   *     so a preview does not pull the publisher's full rate over the network.
+   * @returns An unsubscribe function, or null when not connected.
+   */
+  subscribeCompressedImage: (
+    topicName: string,
+    callback: (base64Data: string, format: string) => void,
+    throttleMs?: number
+  ) => (() => void) | null;
+  /** Topics on the ROS graph with the given message type, e.g. "sensor_msgs/msg/CompressedImage". */
+  listTopicsForType: (messageType: string) => Promise<string[]>;
 };
 
 const DEFAULT_CONNECTION_TIMEOUT = 5000;
@@ -186,6 +201,44 @@ export function useROS2(options: UseROS2Options = {}): UseROS2Return {
     []
   );
 
+  const subscribeCompressedImage = useCallback(
+    (topicName: string, callback: (base64Data: string, format: string) => void, throttleMs = 0) => {
+      if (!rosRef.current) return null;
+      const topic = new ROSLIB.Topic({
+        ros: rosRef.current,
+        name: topicName,
+        messageType: "sensor_msgs/CompressedImage",
+        throttle_rate: throttleMs,
+        queue_length: 1,
+      });
+      topic.subscribe((message) => {
+        if (!isMountedRef.current) return;
+        const { data, format } = message as { data?: unknown; format?: unknown };
+        if (typeof data === "string") callback(data, typeof format === "string" ? format : "");
+      });
+      return () => {
+        try {
+          topic.unsubscribe();
+        } catch (e) {
+          console.warn("Error unsubscribing from topic:", e);
+        }
+      };
+    },
+    []
+  );
+
+  const listTopicsForType = useCallback(
+    (messageType: string) =>
+      new Promise<string[]>((resolve, reject) => {
+        if (!rosRef.current) {
+          resolve([]);
+          return;
+        }
+        rosRef.current.getTopicsForType(messageType, (topics) => resolve(topics), reject);
+      }),
+    []
+  );
+
   /** The advertised topic for publishing, created on first use. */
   const publishTopic = useCallback((topicName: string, messageType: string) => {
     if (!rosRef.current) return null;
@@ -250,5 +303,7 @@ export function useROS2(options: UseROS2Options = {}): UseROS2Return {
     subscribeJointState,
     publishJointState,
     publishCompressedImage,
+    subscribeCompressedImage,
+    listTopicsForType,
   };
 }

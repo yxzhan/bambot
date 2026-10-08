@@ -12,6 +12,8 @@ type CameraTileProps = {
   /** Hands the output canvas to the panel, which publishes from it. */
   registerCanvas: (id: string, canvas: HTMLCanvasElement | null) => void;
   onRemove: (id: string) => void;
+  /** Shown under the preview, e.g. a name clash with another device. */
+  warning?: string | null;
 };
 
 /**
@@ -20,7 +22,14 @@ type CameraTileProps = {
  * (shown at a fixed scale) and what gets published, so what you see is what
  * ROS receives.
  */
-export function CameraTile({ camera, active, scale, registerCanvas, onRemove }: CameraTileProps) {
+export function CameraTile({
+  camera,
+  active,
+  scale,
+  registerCanvas,
+  onRemove,
+  warning,
+}: CameraTileProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [error, setError] = useState<string | null>(null);
   const { id, deviceId, width, height } = camera;
@@ -142,6 +151,11 @@ export function CameraTile({ camera, active, scale, registerCanvas, onRemove }: 
           </div>
         )}
       </div>
+      {warning && (
+        <div className="text-xs text-yellow-300" style={{ maxWidth: width * scale }}>
+          {warning}
+        </div>
+      )}
     </div>
   );
 }
