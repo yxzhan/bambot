@@ -82,6 +82,12 @@ type RobotLoaderProps = {
   robotName: string;
 };
 
+/**
+ * Webcam hand control is hidden for now - VR control replaced it. Its code is
+ * kept; flip this to bring the button, panel and marker back.
+ */
+const HAND_CONTROL_ENABLED = false;
+
 function Loader() {
   const { progress } = useProgress();
   return (
@@ -116,6 +122,7 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
     return getPanelStateFromLocalStorage("ros2Panel", robotName) ?? false;
   });
   const [showHandControl, setShowHandControl] = useState(() => {
+    if (!HAND_CONTROL_ENABLED) return false;
     return getPanelStateFromLocalStorage("handControl", robotName) ?? false;
   });
   const [showVRControl, setShowVRControl] = useState(() => {
@@ -425,7 +432,7 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
             onRobotLoaded={handleRobotLoaded}
             showGround={vrSession.activeMode !== "immersive-ar"}
           >
-            <HandMarker markerRef={handTeleop.markerRef} />
+            {HAND_CONTROL_ENABLED && <HandMarker markerRef={handTeleop.markerRef} />}
             <VRTeleop
               robotRef={robotRef}
               settings={vrSettings}
@@ -509,18 +516,20 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
       />
 
       {/* Hand Control overlay */}
-      <HandControl
-        show={showHandControl}
-        onHide={hideHandControl}
-        enabled={handCameraEnabled}
-        onEnabledChange={setHandCameraEnabled}
-        landmarker={handLandmarker}
-        teleop={handTeleop}
-        calibration={handCalibration}
-        settings={handSettings}
-        onSettingsChange={updateHandSettings}
-        onResetSettings={resetHandSettings}
-      />
+      {HAND_CONTROL_ENABLED && (
+        <HandControl
+          show={showHandControl}
+          onHide={hideHandControl}
+          enabled={handCameraEnabled}
+          onEnabledChange={setHandCameraEnabled}
+          landmarker={handLandmarker}
+          teleop={handTeleop}
+          calibration={handCalibration}
+          settings={handSettings}
+          onSettingsChange={updateHandSettings}
+          onResetSettings={resetHandSettings}
+        />
+      )}
 
       {/* VR Control overlay */}
       <VRControl
@@ -570,10 +579,12 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
               showControlPanel={showWebcamPanel}
               onToggleControlPanel={toggleWebcamPanel}
             />
-            <HandControlButton
-              showControlPanel={showHandControl}
-              onToggleControlPanel={toggleHandControl}
-            />
+            {HAND_CONTROL_ENABLED && (
+              <HandControlButton
+                showControlPanel={showHandControl}
+                onToggleControlPanel={toggleHandControl}
+              />
+            )}
             <VRControlButton
               showControlPanel={showVRControl}
               onToggleControlPanel={toggleVRControl}

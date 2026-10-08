@@ -62,6 +62,9 @@ Seven control modes, each with its own panel + hook:
 
 ### Hand Control
 
+Hidden for now (`HAND_CONTROL_ENABLED = false` in `RobotLoader.tsx`): VR control
+replaced it. The code below is kept and comes back by flipping the flag.
+
 `useHandLandmarker` runs MediaPipe's Hand Landmarker over a webcam stream and
 writes the pose into a ref (never state - it updates at camera frame rate). The
 pose is anchored at the wrist, the steadiest landmark, so opening and closing
