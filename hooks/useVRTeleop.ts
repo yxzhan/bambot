@@ -35,6 +35,7 @@ import {
   VR_IK_ROT_TOLERANCE,
   VR_IK_ROT_WEIGHT,
   VR_TELEOP_INTERVAL,
+  UNREACHABLE_HAPTIC,
   VRControlSettings,
 } from "@/config/vrControlConfig";
 import {
@@ -94,6 +95,7 @@ export type ControllerState = {
   thumbstickY: number;
   /** Squeeze state after hysteresis. */
   gripHeld: boolean;
+  gamepad: Gamepad | null;
 };
 
 type UseVRTeleopParams = {
@@ -130,6 +132,7 @@ function createControllerState(): ControllerState {
     trigger: 0,
     primaryPressed: false,
     thumbstickY: 0,
+    gamepad: null,
     gripHeld: false,
   };
 }
@@ -193,6 +196,7 @@ export function useVRTeleop({
   const takeoverSideRef = useRef(0);
 
   const sinceTickRef = useRef(0);
+  const lastHapticAtRef = useRef(0);
   const lastStatusAtRef = useRef(0);
   const statusRef = useRef<VRTeleopStatus>({
     phase: "off",
@@ -371,6 +375,7 @@ export function useVRTeleop({
       if (Math.abs(c.thumbstickY) > THUMBSTICK_DEADZONE) raise -= c.thumbstickY;
 
       c.gripHeld = c.gripHeld ? c.squeeze > BUTTON_RELEASE : c.squeeze > BUTTON_PRESS;
+      c.gamepad = source.gamepad;
       c.connected = true;
       seen[hand] = true;
     }
@@ -502,6 +507,13 @@ export function useVRTeleop({
     marker.quaternion.copy(scratch.targetQuat);
     marker.visible = true;
     marker.phase = result.reachable ? "attached" : "unreachable";
+    if (!result.reachable) {
+      const now = performance.now();
+      if (now - lastHapticAtRef.current >= UNREACHABLE_HAPTIC.intervalMs) {
+        lastHapticAtRef.current = now;
+        pulse(c.gamepad, UNREACHABLE_HAPTIC.intensity, UNREACHABLE_HAPTIC.durationMs);
+      }
+    }
     marker.attachProgress = 1;
 
     publishStatus(
@@ -538,6 +550,18 @@ export function useVRTeleop({
   });
 
   return { rig, controllersRef, markerRef };
+}
+
+/** WebXR controllers expose this (Quest Browser does); it is not in lib.dom. */
+type HapticGamepad = {
+  hapticActuators?: { pulse?: (intensity: number, durationMs: number) => unknown }[];
+};
+
+/** Buzzes a controller, where the browser supports it; otherwise does nothing. */
+function pulse(gamepad: Gamepad | null, intensity: number, durationMs: number) {
+  const actuator = (gamepad as HapticGamepad | null)?.hapticActuators?.[0];
+  const result = actuator?.pulse?.(intensity, durationMs);
+  if (result instanceof Promise) result.catch(() => undefined);
 }
 
 /** Current gripper opening, 0 = closed, 1 = open, or null if the joint is missing. */

@@ -66,6 +66,9 @@ export const VR_IK_RESTARTS = 0;
 export const VR_IK_ROT_WEIGHT = 0.5;
 export const VR_IK_ROT_TOLERANCE = 0.02;
 
+/** Light buzz on the engaged controller while the target is out of reach. */
+export const UNREACHABLE_HAPTIC = { intensity: 0.3, durationMs: 40, intervalMs: 200 };
+
 /**
  * How close the trigger has to come to the gripper's current opening (0..1)
  * before it takes the gripper over after engaging.
