@@ -3,8 +3,8 @@
  *
  * Two topics, both `sensor_msgs/JointState` in radians:
  *
- *   commander --(command topic, /joint_commands)--> follower
- *   commander <--(state topic, /joint_states)------ follower
+ *   leader --(command topic, /joint_commands)--> follower
+ *   leader <--(state topic, /joint_states)------ follower
  *
  * `/joint_states` follows the ROS convention of being the robot's own state,
  * so it is only ever published by the follower, and RViz, robot_state_publisher
@@ -22,13 +22,11 @@ import type { JointDetails } from "@/components/playground/RobotScene";
 import type { ROS2Settings } from "@/lib/ros2Settings";
 import { degreesToRadians, radiansToDegrees } from "@/lib/utils";
 
-/** How often the commander publishes commands / the follower publishes its state (~30 Hz). */
-const PUBLISH_INTERVAL_MS = 33;
 /** How often the panel's view of the topics is refreshed. */
 const FEED_REFRESH_MS = 500;
 /**
  * The follower re-applies a joint only when it is further than this from the
- * command (degrees), so a commander sitting still does not cause a stream of
+ * command (degrees), so a leader sitting still does not cause a stream of
  * identical servo writes.
  */
 const APPLY_EPSILON_DEG = 0.05;
@@ -45,7 +43,7 @@ export type TopicFeed = {
 export type UseROS2BridgeResult = {
   /** Commands as seen on the network (follower and monitor only). */
   command: TopicFeed;
-  /** The follower's state as seen on the network (commander and monitor only). */
+  /** The follower's state as seen on the network (leader and monitor only). */
   state: TopicFeed;
 };
 
@@ -74,7 +72,7 @@ export function useROS2Bridge({
 }: UseROS2BridgeParams): UseROS2BridgeResult {
   const { status, subscribeJointState, publishJointState } = ros;
   const connected = status === "connected";
-  const { role, commandTopic, stateTopic } = settings;
+  const { role, commandTopic, stateTopic, publishHz } = settings;
 
   const [command, setCommand] = useState<TopicFeed>(EMPTY_FEED);
   const [state, setState] = useState<TopicFeed>(EMPTY_FEED);
@@ -87,9 +85,9 @@ export function useROS2Bridge({
   const commandTracker = useRef<FeedTracker>({ message: null, count: 0, receivedAt: null });
   const stateTracker = useRef<FeedTracker>({ message: null, count: 0, receivedAt: null });
 
-  // --- publish: commands (commander) or own state (follower) ---------------
+  // --- publish: commands (leader) or own state (follower) ------------------
   const publishTopic =
-    role === "commander" ? commandTopic : role === "follower" ? stateTopic : null;
+    role === "leader" ? commandTopic : role === "follower" ? stateTopic : null;
   const hasJoints = jointDetails.length > 0;
 
   useEffect(() => {
@@ -104,9 +102,9 @@ export function useROS2Bridge({
         }
       }
       if (names.length > 0) publishJointState(publishTopic, names, positions);
-    }, PUBLISH_INTERVAL_MS);
+    }, 1000 / publishHz);
     return () => clearInterval(timer);
-  }, [connected, publishTopic, hasJoints, jointStatesRef, publishJointState]);
+  }, [connected, publishTopic, publishHz, hasJoints, jointStatesRef, publishJointState]);
 
   // --- subscribe: commands (follower drives its robot; monitor watches) ----
   const listenToCommands = role === "follower" || role === "monitor";
@@ -146,8 +144,8 @@ export function useROS2Bridge({
     };
   }, [connected, listenToCommands, role, commandTopic, subscribeJointState, jointStatesRef]);
 
-  // --- subscribe: the follower's state (commander and monitor watch it) -----
-  const listenToState = role === "commander" || role === "monitor";
+  // --- subscribe: the follower's state (leader and monitor watch it) --------
+  const listenToState = role === "leader" || role === "monitor";
   useEffect(() => {
     if (!connected || !listenToState) return;
     const tracker = stateTracker.current;

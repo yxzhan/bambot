@@ -52,7 +52,7 @@ Seven control modes, each with its own panel + hook:
 | `chatControl/` | — | OpenAI tool-calling → simulates key presses |
 | `leaderControl/` | `useLeaderRobotControl` | Teleoperation from leader robot |
 | `recordControl/` | (in `useRobotControl`) | Record/replay joint sequences at 20ms intervals |
-| `ros2Control/` | `useROS2` + `useROS2Bridge` | Commander / follower teleop over rosbridge |
+| `ros2Control/` | `useROS2` + `useROS2Bridge` | Leader / follower teleop over rosbridge |
 | `handControl/` | `useHandLandmarker` + `useHandTeleop` | Webcam hand tracking → IK → end effector |
 | `vrControl/` | `useVRSession` + `useVRTeleop` | WebXR controllers → IK → end effector |
 
@@ -119,16 +119,18 @@ runtime (Quest Link / Air Link / SteamVR), or a ROS 2 relay.
 
 `useROS2` owns the rosbridge connection and joint state publish/subscribe;
 `useROS2Bridge` decides what to do with it from the page's role
-(`lib/ros2Settings.ts`, persisted, overridable with `?ros2role=`):
+(`lib/ros2Settings.ts`, persisted, overridable with `?ros2role=`; the old name
+`commander` is still accepted for `leader`):
 
-- **commander** publishes this page's joint positions on `/joint_commands`
+- **leader** publishes this page's joint positions on `/joint_commands`
   (whatever moved them: leader arm, VR, keyboard) and shows `/joint_states`.
 - **follower** applies `/joint_commands` through `updateJointsDegrees` (so its
   servos move) and publishes its own state on `/joint_states`. It re-applies a
   joint whenever it differs from the command, so a local nudge is undone.
 - **monitor** only listens.
 
-Both topics are `sensor_msgs/JointState` in radians, ~30 Hz. `/joint_states` is
+Both topics are `sensor_msgs/JointState` in radians, published at the panel's
+publish rate (default 30 Hz, 1–60). `/joint_states` is
 only ever published by the follower, as the ROS convention expects. The state
 the follower publishes is what it applied, not servo read-back. The MuJoCo sim
 in the parent repo is a follower on the same contract.

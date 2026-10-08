@@ -18,8 +18,7 @@ import { useROS2 } from "@/hooks/useROS2";
 import { useROS2Bridge } from "@/hooks/useROS2Bridge";
 import {
   getROS2SettingsFromLocalStorage,
-  ROS2_ROLES,
-  ROS2Role,
+  parseROS2Role,
   ROS2Settings,
   setROS2SettingsToLocalStorage,
 } from "@/lib/ros2Settings";
@@ -129,8 +128,8 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
   // page ready for its job.
   const [ros2Settings, setROS2Settings] = useState<ROS2Settings>(() => {
     const stored = getROS2SettingsFromLocalStorage();
-    const role = searchParams.get("ros2role") as ROS2Role | null;
-    return role && ROS2_ROLES.includes(role) ? { ...stored, role } : stored;
+    const role = parseROS2Role(searchParams.get("ros2role"));
+    return role ? { ...stored, role } : stored;
   });
   const config = robotConfigMap[robotName];
 

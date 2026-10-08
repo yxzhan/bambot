@@ -5,7 +5,13 @@ import { Rnd } from "react-rnd";
 import { panelStyle } from "@/components/playground/panelStyle";
 import type { ROS2ConnectionStatus } from "@/hooks/useROS2";
 import type { TopicFeed, UseROS2BridgeResult } from "@/hooks/useROS2Bridge";
-import { ROS2_ROLES, ROS2Role, ROS2Settings } from "@/lib/ros2Settings";
+import {
+  MAX_PUBLISH_HZ,
+  MIN_PUBLISH_HZ,
+  ROS2_ROLES,
+  ROS2Role,
+  ROS2Settings,
+} from "@/lib/ros2Settings";
 import { radiansToDegrees } from "@/lib/utils";
 
 type ROS2PanelProps = {
@@ -27,7 +33,7 @@ const DEFAULT_URL = "ws://localhost:9090";
 const STALE_AFTER_MS = 1000;
 
 const ROLE_LABEL: Record<ROS2Role, string> = {
-  commander: "Commander",
+  leader: "Leader",
   follower: "Follower",
   monitor: "Monitor",
 };
@@ -41,7 +47,7 @@ const STATUS_STYLE: Record<ROS2ConnectionStatus, { dot: string; text: string; la
 
 function roleDescription(role: ROS2Role, settings: ROS2Settings) {
   switch (role) {
-    case "commander":
+    case "leader":
       return (
         <>
           Publishes this robot&apos;s joints (moved by leader arm, VR, keyboard…) to{" "}
@@ -142,7 +148,7 @@ export function ROS2Panel({
       if (!names.includes(name)) names.push(name);
     }
   }
-  const showCommand = role !== "commander";
+  const showCommand = role !== "leader";
   const showState = role !== "follower";
 
   return (
@@ -227,6 +233,26 @@ export function ROS2Panel({
           <p className="mt-1 text-xs text-zinc-400">{roleDescription(role, settings)}</p>
         </div>
 
+        {role !== "monitor" && (
+          <label className="mb-2 flex items-center gap-2 text-xs">
+            <span className="shrink-0 text-zinc-400">Publish rate</span>
+            <input
+              type="range"
+              min={MIN_PUBLISH_HZ}
+              max={MAX_PUBLISH_HZ}
+              step={1}
+              value={settings.publishHz}
+              onChange={(e) =>
+                onSettingsChange({ ...settings, publishHz: parseInt(e.target.value, 10) })
+              }
+              className="flex-1 accent-sky-400"
+            />
+            <span className="w-12 shrink-0 text-right tabular-nums text-zinc-300">
+              {settings.publishHz} Hz
+            </span>
+          </label>
+        )}
+
         <button
           onClick={() => setShowTopics((v) => !v)}
           className="mb-2 text-xs text-sky-400 hover:underline"
@@ -270,7 +296,7 @@ export function ROS2Panel({
               label="Command"
               topic={settings.commandTopic}
               feed={bridge.command}
-              publishing={role === "commander"}
+              publishing={role === "leader"}
             />
             <TopicBadge
               label="State"
