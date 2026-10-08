@@ -52,7 +52,7 @@ export type RecordData = number[][]; // Array of arrays representing servo posit
  * Lower is smoother but lags more. The register lives in RAM, so it is lost on
  * power-off and written again on every connect.
  */
-const SERVO_ACCELERATION = 50;
+const SERVO_ACCELERATION = 30;
 
 export function useRobotControl(
   initialJointDetails: JointDetails[],
