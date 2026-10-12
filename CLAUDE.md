@@ -49,7 +49,7 @@ Seven control modes, each with its own panel + hook:
 | Panel | Hook | Purpose |
 |-------|------|---------|
 | `keyboardControl/` | `useRobotControl` | Keyboard + sliders → servo SDK |
-| `chatControl/` | — | OpenAI tool-calling → simulates key presses |
+| `chatControl/` | — | LLM (OpenAI compatible / Claude) tool-calling, with camera snapshots → simulates key presses |
 | `leaderControl/` | `useLeaderRobotControl` | Teleoperation from leader robot |
 | `recordControl/` | (in `useRobotControl`) | Record/replay joint sequences at 20ms intervals |
 | `ros2Control/` | `useROS2` + `useROS2Bridge` | Leader / follower teleop over rosbridge |
@@ -176,7 +176,17 @@ No Redux or Zustand. State is local to hooks and components via `useState`/`useR
 
 ### AI Chat Control
 
-`chatControl/ChatControl.tsx` uses the Vercel `ai` SDK with OpenAI. The AI is given a `keyPress` tool that simulates keyboard input, which flows through the standard keyboard control path. API key, base URL, and model are stored in `localStorage` via `lib/chatSettings.ts`.
+`chatControl/ChatControl.tsx` uses the Vercel `ai` SDK (v4) with either an
+OpenAI compatible API (OpenAI, Ollama, custom base URL) or the Claude API
+(`@ai-sdk/anthropic`, called straight from the browser with the
+`anthropic-dangerous-direct-browser-access` header). The AI is given a `keyPress` tool that simulates keyboard input, which flows through the standard keyboard control path. Provider, API keys (one per provider), base URL, and models are stored in `localStorage` via `lib/chatSettings.ts`.
+
+The camera button picks cameras whose snapshots go with every message, each
+image preceded by its camera's name. `lib/cameraFrames.ts` reads this page's
+cameras off the camera panel's canvases (and keeps them streaming while the
+chat wants them, even with the panel closed) and other devices' cameras from
+their `/<name>/image_raw/compressed` topics, one frame per message. Each
+message is sent on its own, without the earlier conversation.
 
 ## Key Conventions
 

@@ -9,6 +9,14 @@ import {
   setSystemPromptToLocalStorage,
   getModelFromLocalStorage,
   setModelToLocalStorage,
+  getProviderFromLocalStorage,
+  setProviderToLocalStorage,
+  getAnthropicApiKeyFromLocalStorage,
+  setAnthropicApiKeyToLocalStorage,
+  getAnthropicModelFromLocalStorage,
+  setAnthropicModelToLocalStorage,
+  DEFAULT_ANTHROPIC_MODEL,
+  DEFAULT_OPENAI_MODEL,
 } from "../../../lib/chatSettings";
 
 interface SettingsModalProps {
@@ -31,7 +39,7 @@ export function SettingsModal({
   const [systemPrompt, setSystemPromptState] = useState("");
   const [model, setModelState] = useState("");
 
-  type ModelType = "OpenAI" | "Ollama" | "Custom";
+  type ModelType = "OpenAI" | "Anthropic" | "Ollama" | "Custom";
   const [modelType, setModelType] = useState<ModelType>("OpenAI");
   const [showUseDefaultPrompt, setShowUseDefaultPrompt] = useState(false);
 
@@ -40,14 +48,19 @@ export function SettingsModal({
     if (show) {
       const base = getBaseURLFromLocalStorage();
       setApiKeyState(getApiKeyFromLocalStorage());
-      if (
+      if (getProviderFromLocalStorage() === "anthropic") {
+        setModelType("Anthropic");
+        setApiKeyState(getAnthropicApiKeyFromLocalStorage());
+        setBaseURLState(base);
+        setModelState(getAnthropicModelFromLocalStorage() || DEFAULT_ANTHROPIC_MODEL);
+      } else if (
         base === "https://api.openai.com/v1/" ||
         base === "" ||
         base == null
       ) {
         setModelType("OpenAI");
         setBaseURLState("https://api.openai.com/v1/");
-        setModelState(getModelFromLocalStorage() || "gpt-4.1-nano");
+        setModelState(getModelFromLocalStorage() || DEFAULT_OPENAI_MODEL);
       } else if (base === "http://localhost:11434/v1") {
         setModelType("Ollama");
         setBaseURLState("http://localhost:11434/v1");
@@ -69,9 +82,20 @@ export function SettingsModal({
     }
   }, [show, robotName, configSystemPrompt]);
 
-  // When switching LLM type, only change Base URL, keep other values unchanged
+  // When switching between OpenAI compatible types, only change Base URL and
+  // keep other values unchanged. Anthropic has its own key and model.
   const handleModelTypeChange = (type: ModelType) => {
+    const wasAnthropic = modelType === "Anthropic";
     setModelType(type);
+    if (type === "Anthropic") {
+      setApiKeyState(getAnthropicApiKeyFromLocalStorage());
+      setModelState(getAnthropicModelFromLocalStorage() || DEFAULT_ANTHROPIC_MODEL);
+      return;
+    }
+    if (wasAnthropic) {
+      setApiKeyState(getApiKeyFromLocalStorage());
+      setModelState(getModelFromLocalStorage());
+    }
     if (type === "OpenAI") {
       setBaseURLState("https://api.openai.com/v1/");
     } else if (type === "Ollama") {
@@ -98,14 +122,21 @@ export function SettingsModal({
   if (!show) return null;
 
   const handleSave = () => {
-    setApiKeyToLocalStorage(apiKey);
-    setBaseURLToLocalStorage(baseURL);
+    if (modelType === "Anthropic") {
+      setProviderToLocalStorage("anthropic");
+      setAnthropicApiKeyToLocalStorage(apiKey);
+      setAnthropicModelToLocalStorage(model);
+    } else {
+      setProviderToLocalStorage("openai");
+      setApiKeyToLocalStorage(apiKey);
+      setBaseURLToLocalStorage(baseURL);
+      setModelToLocalStorage(model);
+    }
     // Only save system prompt if the current prompt is not the default one
     const defaultPrompt = configSystemPrompt || "";
     if (systemPrompt !== defaultPrompt) {
       setSystemPromptToLocalStorage(systemPrompt, robotName);
     }
-    setModelToLocalStorage(model);
     onClose();
   };
 
@@ -124,6 +155,7 @@ export function SettingsModal({
             className="p-1 rounded bg-zinc-700 text-white outline-none text-base font-semibold ml-4"
           >
             <option value="OpenAI">OpenAI</option>
+            <option value="Anthropic">Anthropic (Claude)</option>
             <option value="Ollama">Ollama</option>
             <option value="Custom">Custom</option>
           </select>
@@ -143,6 +175,22 @@ export function SettingsModal({
               </a>
               .<br />
               The API Key is stored only in your browser.
+            </>
+          )}
+          {modelType === "Anthropic" && (
+            <>
+              Get your Claude API key at
+              <a
+                href="https://console.anthropic.com/settings/keys"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline text-blue-300 ml-1"
+              >
+                https://console.anthropic.com/settings/keys
+              </a>
+              .<br />
+              The API Key is stored only in your browser and sent straight to
+              the Claude API.
             </>
           )}
           {modelType === "Ollama" && (
@@ -167,12 +215,18 @@ export function SettingsModal({
             type="text"
             value={apiKey}
             onChange={(e) => setApiKeyState(e.target.value)}
-            placeholder={modelType === "Ollama" ? "" : "sk-..."}
+            placeholder={
+              modelType === "Ollama" ? "" : modelType === "Anthropic" ? "sk-ant-..." : "sk-..."
+            }
             className="flex-1 p-2 rounded bg-zinc-700 text-white outline-none"
           />
         </div>
-        {/* Base URL */}
-        <div className="flex items-center mb-4 ml-4">
+        {/* Base URL (the Claude API has a fixed one) */}
+        <div
+          className={
+            "flex items-center mb-4 ml-4" + (modelType === "Anthropic" ? " hidden" : "")
+          }
+        >
           <label className="text-white font-medium mr-2 whitespace-nowrap">
             Base URL:
           </label>
@@ -203,7 +257,9 @@ export function SettingsModal({
               modelType === "Ollama"
                 ? "mistral-small3.1"
                 : modelType === "OpenAI"
-                ? "gpt-4.1-nano"
+                ? DEFAULT_OPENAI_MODEL
+                : modelType === "Anthropic"
+                ? DEFAULT_ANTHROPIC_MODEL
                 : ""
             }
             className="flex-1 p-2 rounded bg-zinc-700 text-white outline-none"

@@ -2,8 +2,9 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Rnd } from "react-rnd";
 import { usePanelZ } from "../panelStack";
-import { generateText, tool } from "ai";
+import { generateText, tool, type LanguageModel, type UserContent } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
+import { createAnthropic } from "@ai-sdk/anthropic";
 import { SettingsModal } from "./SettingsModal";
 import { z } from "zod";
 import {
@@ -11,47 +12,160 @@ import {
   getBaseURLFromLocalStorage,
   getSystemPromptFromLocalStorage,
   getModelFromLocalStorage,
+  getProviderFromLocalStorage,
+  getAnthropicApiKeyFromLocalStorage,
+  getAnthropicModelFromLocalStorage,
+  getChatCamerasFromLocalStorage,
+  setChatCamerasToLocalStorage,
+  DEFAULT_ANTHROPIC_MODEL,
+  DEFAULT_OPENAI_MODEL,
 } from "../../../lib/chatSettings";
+import {
+  CameraSnapshot,
+  captureLocalCamera,
+  captureRemoteCamera,
+  localCameraNames,
+  useKeepCamerasActive,
+} from "@/lib/cameraFrames";
 import useMeasure from "react-use-measure";
 import { panelStyle } from "@/components/playground/panelStyle";
+
+const IMAGE_TYPE = "sensor_msgs/msg/CompressedImage";
+const CAMERA_TOPIC_PATTERN = /^\/(.+)\/image_raw\/compressed$/;
+
+/** A camera the chat can send snapshots of. */
+type ChatCamera = { name: string; topic?: string };
+
+type ChatMessage = {
+  sender: string;
+  text: string;
+  images?: CameraSnapshot[];
+};
 
 type ChatControlProps = {
   robotName?: string;
   systemPrompt?: string;
   onHide: () => void;
   show?: boolean; // 新增 show 属性
+  /** Whether the ROS 2 bridge is connected; other devices' cameras need it. */
+  rosConnected?: boolean;
+  subscribeCompressedImage?: (
+    topicName: string,
+    callback: (base64Data: string, format: string) => void,
+    throttleMs?: number
+  ) => (() => void) | null;
+  listTopicsForType?: (messageType: string) => Promise<string[]>;
 };
+
+/** This page's cameras, then other devices' cameras found on the ROS graph. */
+async function listChatCameras(
+  rosConnected: boolean,
+  listTopicsForType?: (messageType: string) => Promise<string[]>
+): Promise<ChatCamera[]> {
+  const local = localCameraNames();
+  const cameras: ChatCamera[] = local.map((name) => ({ name }));
+  if (rosConnected && listTopicsForType) {
+    try {
+      for (const topic of (await listTopicsForType(IMAGE_TYPE)).sort()) {
+        const name = topic.match(CAMERA_TOPIC_PATTERN)?.[1];
+        // A camera this page publishes itself is read from its canvas.
+        if (name && !local.includes(name)) cameras.push({ name, topic });
+      }
+    } catch {
+      // rosapi missing or busy: local cameras only.
+    }
+  }
+  return cameras;
+}
 
 export function ChatControl({
   robotName,
   systemPrompt: configSystemPrompt,
   onHide,
   show = true,
+  rosConnected = false,
+  subscribeCompressedImage,
+  listTopicsForType,
 }: ChatControlProps) {
   const [ref, bounds] = useMeasure();
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<{ sender: string; text: string }[]>(
-    []
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [busy, setBusy] = useState(false);
+  /** Cameras whose snapshots go with every message. */
+  const [selectedCameras, setSelectedCameras] = useState<string[]>(() =>
+    getChatCamerasFromLocalStorage()
   );
+  const [showCameraPicker, setShowCameraPicker] = useState(false);
+  const [availableCameras, setAvailableCameras] = useState<ChatCamera[] | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const { zIndex, bringToFront } = usePanelZ("chat");
   const [position, setPosition] = useState({ x: 0, y: 0 });
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  const apiKey = getApiKeyFromLocalStorage();
-  const baseURL = getBaseURLFromLocalStorage() || "https://api.openai.com/v1/";
-  const model = getModelFromLocalStorage() || "gpt-4.1-nano";
+  const provider = getProviderFromLocalStorage();
+  const apiKey =
+    provider === "anthropic" ? getAnthropicApiKeyFromLocalStorage() : getApiKeyFromLocalStorage();
   const systemPrompt =
     getSystemPromptFromLocalStorage(robotName) ||
     configSystemPrompt || // <-- Use configSystemPrompt if present
     `You can help control a robot by pressing keyboard keys. Use the keyPress tool to simulate key presses. Each key will be held down for 1 second by default. If the user describes roughly wanting to make it longer or shorter, adjust the duration accordingly.`;
 
-  // Create openai instance with current apiKey and baseURL
-  const openai = createOpenAI({
-    apiKey,
-    baseURL,
-  });
+  const createModel = (): LanguageModel => {
+    if (provider === "anthropic") {
+      const anthropic = createAnthropic({
+        apiKey,
+        // The Claude API refuses browser (CORS) requests without this. The key
+        // is the user's own and never leaves their browser except to the API.
+        headers: { "anthropic-dangerous-direct-browser-access": "true" },
+      });
+      return anthropic(getAnthropicModelFromLocalStorage() || DEFAULT_ANTHROPIC_MODEL);
+    }
+    const openai = createOpenAI({
+      apiKey,
+      baseURL: getBaseURLFromLocalStorage() || "https://api.openai.com/v1/",
+    });
+    return openai(getModelFromLocalStorage() || DEFAULT_OPENAI_MODEL);
+  };
+
+  // Local cameras only stream while their panel is open; keep them on while
+  // the chat sends their snapshots, so a message does not wait for start-up.
+  useKeepCamerasActive(show && selectedCameras.length > 0);
+
+  const refreshCameras = async () => {
+    setAvailableCameras(await listChatCameras(rosConnected, listTopicsForType));
+  };
+
+  const toggleCameraPicker = () => {
+    if (!showCameraPicker) refreshCameras();
+    setShowCameraPicker(!showCameraPicker);
+  };
+
+  const toggleCamera = (name: string) => {
+    const next = selectedCameras.includes(name)
+      ? selectedCameras.filter((n) => n !== name)
+      : [...selectedCameras, name];
+    setSelectedCameras(next);
+    setChatCamerasToLocalStorage(next);
+  };
+
+  /** Snapshots of the selected cameras, and the names of those that gave none. */
+  const captureSelected = async () => {
+    const cameras = await listChatCameras(rosConnected, listTopicsForType);
+    const results = await Promise.all(
+      selectedCameras.map(async (name) => {
+        const camera = cameras.find((c) => c.name === name);
+        if (!camera) return null;
+        if (!camera.topic) return captureLocalCamera(name);
+        return subscribeCompressedImage
+          ? captureRemoteCamera(subscribeCompressedImage, camera.topic, name)
+          : null;
+      })
+    );
+    const images = results.filter((r): r is CameraSnapshot => r !== null);
+    const missing = selectedCameras.filter((name) => !images.some((i) => i.name === name));
+    return { images, missing };
+  };
 
   useEffect(() => {
     if (bounds.height > 0) {
@@ -70,11 +184,29 @@ export function ChatControl({
   }, [messages]);
 
   const handleCommand = async (command: string) => {
-    setMessages((prev) => [...prev, { sender: "User", text: command }]);
+    setBusy(true);
+    const { images, missing } = await captureSelected();
+    setMessages((prev) => [
+      ...prev,
+      {
+        sender: "User",
+        text:
+          command +
+          (missing.length > 0 ? `\n(no image from: ${missing.join(", ")})` : ""),
+        images,
+      },
+    ]);
+    // Each image is preceded by its camera's name, so the model can tell the
+    // views apart and refer to them.
+    const userContent: UserContent = [{ type: "text", text: command }];
+    for (const image of images) {
+      userContent.push({ type: "text", text: `Camera "${image.name}":` });
+      userContent.push({ type: "image", image: image.base64, mimeType: image.mimeType });
+    }
     try {
       const result = await generateText({
-        model: openai(model),
-        prompt: command,
+        model: createModel(),
+        messages: [{ role: "user", content: userContent }],
         system: systemPrompt,
         tools: {
           keyPress: tool({
@@ -125,22 +257,26 @@ export function ChatControl({
         },
       });
       let text = result.text.trim();
-      const content = result.response?.messages[1]?.content;
-      for (const element of content ?? []) {
-        text += `\n\n${element.result}`;
+      for (const toolResult of result.toolResults) {
+        text += `\n\n${toolResult.result}`;
       }
       setMessages((prev) => [...prev, { sender: "AI", text }]);
     } catch (error) {
       console.error("Error generating text:", error);
       setMessages((prev) => [
         ...prev,
-        { sender: "AI", text: "Error: Unable to process your request." },
+        {
+          sender: "AI",
+          text: `Error: ${error instanceof Error ? error.message : "Unable to process your request."}`,
+        },
       ]);
+    } finally {
+      setBusy(false);
     }
   };
 
   const handleSend = () => {
-    if (input.trim()) {
+    if (input.trim() && !busy) {
       if (!apiKey) {
         setShowSettings(true);
         return;
@@ -194,9 +330,25 @@ export function ChatControl({
                 msg.sender === "AI" ? "text-green-400" : "text-blue-400"
               }`}
             >
-              <strong>{msg.sender}:</strong> {msg.text}
+              <strong>{msg.sender}:</strong>{" "}
+              <span className="whitespace-pre-wrap">{msg.text}</span>
+              {msg.images && msg.images.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {msg.images.map((image) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      key={image.name}
+                      src={`data:${image.mimeType};base64,${image.base64}`}
+                      alt={image.name}
+                      title={image.name}
+                      className="h-16 rounded"
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           ))}
+          {busy && <div className="mb-2 text-xs text-zinc-400">Thinking…</div>}
           <div ref={messagesEndRef} />
         </div>
         {messages.length > 0 && (
@@ -209,11 +361,64 @@ export function ChatControl({
             </button>
           </div>
         )}
+        {showCameraPicker && (
+          <div className="mb-2 rounded bg-zinc-800/80 p-2 text-sm">
+            <div className="mb-1 flex items-center justify-between text-xs text-zinc-400">
+              <span>Send snapshots of</span>
+              <button onClick={refreshCameras} className="hover:text-white">
+                Refresh
+              </button>
+            </div>
+            {availableCameras === null ? (
+              <div className="text-xs text-zinc-500">Looking for cameras…</div>
+            ) : (
+              <>
+                {availableCameras.map((camera) => (
+                  <label key={camera.name} className="flex items-center gap-2 py-0.5">
+                    <input
+                      type="checkbox"
+                      checked={selectedCameras.includes(camera.name)}
+                      onChange={() => toggleCamera(camera.name)}
+                    />
+                    <span className="font-mono">{camera.name}</span>
+                    {camera.topic && <span className="text-xs text-zinc-500">other device</span>}
+                  </label>
+                ))}
+                {/* Selected earlier but not around now: still listed, so it can be unticked. */}
+                {selectedCameras
+                  .filter((name) => !availableCameras.some((c) => c.name === name))
+                  .map((name) => (
+                    <label key={name} className="flex items-center gap-2 py-0.5 text-zinc-500">
+                      <input type="checkbox" checked onChange={() => toggleCamera(name)} />
+                      <span className="font-mono">{name}</span>
+                      <span className="text-xs">not found</span>
+                    </label>
+                  ))}
+                {availableCameras.length === 0 && selectedCameras.length === 0 && (
+                  <div className="text-xs text-zinc-500">
+                    No cameras. Add one in the Webcam panel
+                    {rosConnected ? "" : ", or connect ROS 2 for other devices' cameras"}.
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
         <div className="flex items-center space-x-2">
           <div className="relative flex items-center w-full">
             <button
-              onClick={() => alert("Camera support coming soon")}
-              className="absolute left-0 bg-zinc-700 hover:bg-zinc-600 text-zinc-400 p-2 rounded"
+              onClick={toggleCameraPicker}
+              title={
+                selectedCameras.length > 0
+                  ? `Sending snapshots of: ${selectedCameras.join(", ")}`
+                  : "Send camera snapshots with messages"
+              }
+              className={
+                "absolute left-0 p-2 rounded " +
+                (selectedCameras.length > 0
+                  ? "bg-blue-600 hover:bg-blue-500 text-white"
+                  : "bg-zinc-700 hover:bg-zinc-600 text-zinc-400")
+              }
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -232,8 +437,9 @@ export function ChatControl({
               onKeyPress={handleKeyPress}
               onKeyDown={(e) => e.stopPropagation()}
               onKeyUp={(e) => e.stopPropagation()}
-              placeholder="Type a command..."
-              className="flex-1 pl-10 p-2 rounded bg-zinc-700 text-white outline-none text-sm"
+              placeholder={busy ? "Waiting for the model..." : "Type a command..."}
+              disabled={busy}
+              className="flex-1 pl-10 p-2 rounded bg-zinc-700 text-white outline-none text-sm disabled:opacity-60"
             />
           </div>
         </div>

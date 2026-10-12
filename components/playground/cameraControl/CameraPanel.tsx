@@ -21,6 +21,7 @@ import {
   PREVIEW_SCALES,
   setCamerasToLocalStorage,
 } from "@/lib/cameraSettings";
+import { registerLocalCamera, useCamerasDemanded } from "@/lib/cameraFrames";
 import { CameraTile } from "./CameraTile";
 import { remoteCameraName, RemoteCameraTile } from "./RemoteCameraTile";
 
@@ -94,10 +95,15 @@ export function CameraPanel({
     setCamerasToLocalStorage(next);
   };
 
-  const registerCanvas = useCallback((id: string, canvas: HTMLCanvasElement | null) => {
-    if (canvas) canvasesRef.current.set(id, canvas);
-    else canvasesRef.current.delete(id);
-  }, []);
+  const registerCanvas = useCallback(
+    (id: string, name: string, canvas: HTMLCanvasElement | null) => {
+      if (canvas) canvasesRef.current.set(id, canvas);
+      else canvasesRef.current.delete(id);
+      // Also readable by other panels, e.g. the AI chat's snapshots.
+      registerLocalCamera(id, name, canvas);
+    },
+    []
+  );
 
   const removeCamera = useCallback((id: string) => {
     setCameras((prev) => {
@@ -194,9 +200,10 @@ export function CameraPanel({
     return () => clearInterval(timer);
   }, [publishing, rosConnected, publishHz]);
 
-  // Cameras run while they are on screen or being published, and are
-  // released otherwise.
-  const active = show || publishing;
+  // Cameras run while they are on screen, being published or wanted by
+  // another panel, and are released otherwise.
+  const demanded = useCamerasDemanded();
+  const active = show || publishing || demanded;
 
   // --- other devices' cameras -------------------------------------------------
   // A camera only exists on the device it is plugged into, so other devices'

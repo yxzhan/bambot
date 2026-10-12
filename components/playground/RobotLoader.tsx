@@ -546,6 +546,9 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
         onHide={hideChatControl}
         robotName={robotName}
         systemPrompt={systemPrompt}
+        rosConnected={ros2Status === "connected"}
+        subscribeCompressedImage={ros2.subscribeCompressedImage}
+        listTopicsForType={ros2.listTopicsForType}
       />
       {/* LeaderControl overlay */}
       <LeaderControl

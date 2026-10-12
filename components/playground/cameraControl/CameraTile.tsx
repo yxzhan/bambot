@@ -10,7 +10,7 @@ type CameraTileProps = {
   /** Preview size as a fraction of the output size. */
   scale: number;
   /** Hands the output canvas to the panel, which publishes from it. */
-  registerCanvas: (id: string, canvas: HTMLCanvasElement | null) => void;
+  registerCanvas: (id: string, name: string, canvas: HTMLCanvasElement | null) => void;
   onRemove: (id: string) => void;
   /** Shown under the preview, e.g. a name clash with another device. */
   warning?: string | null;
@@ -32,12 +32,12 @@ export function CameraTile({
 }: CameraTileProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [error, setError] = useState<string | null>(null);
-  const { id, deviceId, width, height } = camera;
+  const { id, name, deviceId, width, height } = camera;
 
   useEffect(() => {
-    registerCanvas(id, canvasRef.current);
-    return () => registerCanvas(id, null);
-  }, [id, registerCanvas]);
+    registerCanvas(id, name, canvasRef.current);
+    return () => registerCanvas(id, name, null);
+  }, [id, name, registerCanvas]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
