@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Rnd } from "react-rnd";
+import { usePanelZ } from "../panelStack";
 import useMeasure from "react-use-measure";
 import { panelStyle } from "@/components/playground/panelStyle";
 import { LeaderConnectionHelpDialog } from "./LeaderConnectionHelpDialog";
@@ -63,6 +64,7 @@ const LeaderControl = ({
 }) => {
   const revoluteJoints = jointDetails.filter((j) => j.jointType === "revolute");
   const { isConnected, connectLeader, disconnectLeader } = leaderControl;
+  const { zIndex, bringToFront } = usePanelZ("leader");
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [connectionStatus, setConnectionStatus] = useState<
     "idle" | "connecting" | "disconnecting"
@@ -101,10 +103,11 @@ const LeaderControl = ({
       position={position}
       onDragStop={(_, d) => setPosition({ x: d.x, y: d.y })}
       bounds="window"
+      cancel="input, select, textarea, button"
       className="z-50"
-      style={{ display: show ? undefined : "none" }}
+      style={{ display: show ? undefined : "none", zIndex }}
     >
-      <div
+      <div onPointerDownCapture={bringToFront}
         ref={ref}
         className={"max-h-[90vh] overflow-y-auto text-sm " + panelStyle}
       >

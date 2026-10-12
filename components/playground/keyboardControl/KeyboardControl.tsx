@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Rnd } from "react-rnd";
+import { usePanelZ } from "../panelStack";
 import {
   JointState,
   UpdateJointDegrees,
@@ -59,6 +60,7 @@ export function ControlPanel({
     "idle" | "connecting" | "disconnecting"
   >("idle");
   const [ref, bounds] = useMeasure();
+  const { zIndex, bringToFront } = usePanelZ("keyboard");
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [hasDragged, setHasDragged] = useState(false);
 
@@ -106,10 +108,11 @@ export function ControlPanel({
         setHasDragged(true);
       }}
       bounds="window"
+      cancel="input, select, textarea, button"
       className="z-50"
-      style={{ display: show ? undefined : "none" }}
+      style={{ display: show ? undefined : "none", zIndex }}
     >
-      <div
+      <div onPointerDownCapture={bringToFront}
         ref={ref}
         className={"max-h-[80vh] overflow-y-auto text-sm " + panelStyle}
       >

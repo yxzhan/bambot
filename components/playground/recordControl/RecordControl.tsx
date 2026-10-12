@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Rnd } from "react-rnd";
+import { usePanelZ } from "../panelStack";
 import useMeasure from "react-use-measure";
 import { panelStyle } from "@/components/playground/panelStyle";
 import { RECORDING_INTERVAL } from "@/config/uiConfig";
@@ -43,6 +44,7 @@ const RecordControl = ({
 }: RecordControlProps) => {
   const [recordingState, setRecordingState] = useState<RecordingState>("idle");
   const [recordingTime, setRecordingTime] = useState(0);
+  const { zIndex, bringToFront } = usePanelZ("record");
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [ref, bounds] = useMeasure();
   const [replayProgress, setReplayProgress] = useState(0);
@@ -197,9 +199,9 @@ const RecordControl = ({
       onDragStop={(_, d) => setPosition({ x: d.x, y: d.y })}
       bounds="window"
       className="z-50"
-      style={{ display: show ? undefined : "none" }}
+      style={{ display: show ? undefined : "none", zIndex }}
     >
-      <div
+      <div onPointerDownCapture={bringToFront}
         ref={ref}
         className={"max-h-[90vh] overflow-y-auto text-sm " + panelStyle}
       >

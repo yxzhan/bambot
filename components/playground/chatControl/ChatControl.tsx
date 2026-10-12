@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
 import { Rnd } from "react-rnd";
+import { usePanelZ } from "../panelStack";
 import { generateText, tool } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { SettingsModal } from "./SettingsModal";
@@ -33,6 +34,7 @@ export function ChatControl({
     []
   );
   const [showSettings, setShowSettings] = useState(false);
+  const { zIndex, bringToFront } = usePanelZ("chat");
   const [position, setPosition] = useState({ x: 0, y: 0 });
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -159,10 +161,11 @@ export function ChatControl({
       position={position}
       onDragStop={(_, d) => setPosition({ x: d.x, y: d.y })}
       bounds="window"
+      cancel="input, select, textarea, button"
       className="z-50"
-      style={{ display: show ? undefined : "none" }}
+      style={{ display: show ? undefined : "none", zIndex }}
     >
-      <div ref={ref} className={"p-4 w-80 z-50 " + panelStyle}>
+      <div onPointerDownCapture={bringToFront} ref={ref} className={"p-4 w-80 z-50 " + panelStyle}>
         <h4 className="border-b border-white/50  pb-2 font-bold mb-2 flex items-center justify-between">
           <span>AI Control Robot</span>
           <div className="flex gap-2">

@@ -2,6 +2,8 @@
 
 import React, { useState } from "react";
 import { Rnd } from "react-rnd";
+import { usePanelZ } from "../panelStack";
+import { usePanelPosition } from "../usePanelPosition";
 import { panelStyle } from "@/components/playground/panelStyle";
 import { VRControlSettings } from "@/config/vrControlConfig";
 import type { UseVRSessionResult, VRMode } from "@/hooks/useVRSession";
@@ -104,7 +106,8 @@ export function VRControl({
   onResetSettings,
   control,
 }: VRControlProps) {
-  const [position, setPosition] = useState({ x: 20, y: 70 });
+  const { zIndex, bringToFront } = usePanelZ("vr");
+  const [position, setPosition] = usePanelPosition(show, { x: 20, y: 70 });
   const [size, setSize] = useState({ width: 360, height: 520 });
   const [showTuning, setShowTuning] = useState(false);
 
@@ -127,10 +130,10 @@ export function VRControl({
       minHeight={260}
       bounds="window"
       className="z-40"
-      style={{ display: show ? undefined : "none" }}
+      style={{ display: show ? undefined : "none", zIndex }}
       cancel="input, select, button"
     >
-      <div className={`flex h-full flex-col overflow-hidden ${panelStyle} p-3`}>
+      <div onPointerDownCapture={bringToFront} className={`flex h-full flex-col overflow-hidden ${panelStyle} p-3`}>
         <div className="mb-2 flex shrink-0 items-center justify-between">
           <h4 className="text-lg font-bold">VR Control</h4>
           <button

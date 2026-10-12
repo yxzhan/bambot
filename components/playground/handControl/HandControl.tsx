@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { Rnd } from "react-rnd";
+import { usePanelZ } from "../panelStack";
 import { panelStyle } from "@/components/playground/panelStyle";
 import { HandControlSettings } from "@/config/handControlConfig";
 import { UseHandLandmarkerResult } from "@/hooks/useHandLandmarker";
@@ -80,6 +81,7 @@ export function HandControl({
   onSettingsChange,
   onResetSettings,
 }: HandControlProps) {
+  const { zIndex, bringToFront } = usePanelZ("hand");
   const [position, setPosition] = useState({ x: 20, y: 70 });
   const [size, setSize] = useState({ width: 380, height: 540 });
   const [showTuning, setShowTuning] = useState(false);
@@ -121,10 +123,10 @@ export function HandControl({
       minHeight={300}
       bounds="window"
       className="z-40"
-      style={{ display: show ? undefined : "none" }}
+      style={{ display: show ? undefined : "none", zIndex }}
       cancel="input, select, button"
     >
-      <div className={`flex h-full flex-col overflow-hidden ${panelStyle} p-3`}>
+      <div onPointerDownCapture={bringToFront} className={`flex h-full flex-col overflow-hidden ${panelStyle} p-3`}>
         <div className="mb-2 flex shrink-0 items-center justify-between">
           <h4 className="text-lg font-bold">Hand Control</h4>
           <button

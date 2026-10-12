@@ -2,6 +2,8 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Rnd } from "react-rnd";
+import { usePanelZ } from "../panelStack";
+import { usePanelPosition } from "../usePanelPosition";
 import { panelStyle } from "@/components/playground/panelStyle";
 import {
   CameraConfig,
@@ -76,7 +78,8 @@ export function CameraPanel({
   subscribeCompressedImage,
   listTopicsForType,
 }: CameraPanelProps) {
-  const [position, setPosition] = useState({ x: 20, y: 70 });
+  const { zIndex, bringToFront } = usePanelZ("webcam");
+  const [position, setPosition] = usePanelPosition(show, { x: 20, y: 70 });
   const [cameras, setCameras] = useState<CameraConfig[]>(() => getCamerasFromLocalStorage());
   const [form, setForm] = useState<AddForm | null>(null);
   const [scale, setScale] = useState(DEFAULT_PREVIEW_SCALE);
@@ -239,11 +242,11 @@ export function CameraPanel({
       onDragStop={(_, d) => setPosition({ x: d.x, y: d.y })}
       bounds="window"
       className="z-40"
-      style={{ display: show ? undefined : "none" }}
+      style={{ display: show ? undefined : "none", zIndex }}
       cancel="input, select, button"
       enableResizing={false}
     >
-      <div
+      <div onPointerDownCapture={bringToFront}
         className={`flex max-h-[85vh] min-w-72 max-w-[90vw] flex-col ${panelStyle} p-3`}
       >
         <div className="mb-2 flex shrink-0 items-center justify-between">

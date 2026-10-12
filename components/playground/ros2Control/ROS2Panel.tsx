@@ -2,6 +2,8 @@
 
 import React, { useEffect, useState } from "react";
 import { Rnd } from "react-rnd";
+import { usePanelZ } from "../panelStack";
+import useMeasure from "react-use-measure";
 import { panelStyle } from "@/components/playground/panelStyle";
 import type { ROS2ConnectionStatus } from "@/hooks/useROS2";
 import type { TopicFeed, UseROS2BridgeResult } from "@/hooks/useROS2Bridge";
@@ -33,8 +35,7 @@ type ROS2PanelProps = {
 
 const DEFAULT_URL = "ws://localhost:9090";
 
-/** Panel width (Tailwind w-80) and its margin from the window edge, px. */
-const PANEL_WIDTH = 320;
+/** Margin from the window's right edge, px. */
 const PANEL_MARGIN = 20;
 /** Clears the page header, whose strip would otherwise cover the title row. */
 const PANEL_TOP = 70;
@@ -123,11 +124,23 @@ export function ROS2Panel({
   control,
 }: ROS2PanelProps) {
   const [url, setUrl] = useState(defaultUrl);
-  // Opens in the top-right corner.
-  const [position, setPosition] = useState(() => ({
-    x: Math.max(PANEL_MARGIN, window.innerWidth - PANEL_WIDTH - PANEL_MARGIN),
-    y: PANEL_TOP,
-  }));
+  // Opens in the top-right corner, placed once it is shown and measured -
+  // like the keyboard panel. It must start at (0, 0): react-rnd works out
+  // its offset from the parent when it mounts, and a panel mounted hidden
+  // (display: none) at a non-zero position gets that offset wrong and opens
+  // at twice the position.
+  const [ref, bounds] = useMeasure();
+  const { zIndex, bringToFront } = usePanelZ("ros2");
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [hasDragged, setHasDragged] = useState(false);
+  useEffect(() => {
+    if (bounds.width > 0 && !hasDragged) {
+      setPosition({
+        x: Math.max(PANEL_MARGIN, window.innerWidth - bounds.width - PANEL_MARGIN),
+        y: PANEL_TOP,
+      });
+    }
+  }, [bounds.width, hasDragged]);
   const [showTopics, setShowTopics] = useState(false);
   const [topicDraft, setTopicDraft] = useState({
     commandTopic: settings.commandTopic,
@@ -169,13 +182,16 @@ export function ROS2Panel({
   return (
     <Rnd
       position={position}
-      onDragStop={(_, d) => setPosition({ x: d.x, y: d.y })}
+      onDragStop={(_, d) => {
+        setPosition({ x: d.x, y: d.y });
+        setHasDragged(true);
+      }}
       bounds="window"
       className="z-40"
-      style={{ display: show ? undefined : "none" }}
+      style={{ display: show ? undefined : "none", zIndex }}
       cancel="input, select, button"
     >
-      <div className={`p-3 w-80 z-50 ${panelStyle}`}>
+      <div onPointerDownCapture={bringToFront} ref={ref} className={`p-3 w-80 z-50 ${panelStyle}`}>
         <div className="mb-3 flex justify-between items-center shrink-0">
           <h4 className="font-bold text-lg">ROS 2 Bridge</h4>
           <button
