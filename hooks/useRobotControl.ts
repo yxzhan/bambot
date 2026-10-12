@@ -6,6 +6,10 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { ScsServoSDK } from "feetech.js";
 import { servoPositionToAngle, degreesToServoPosition } from "../lib/utils";
 import { RECORDING_INTERVAL } from "@/config/uiConfig";
+import {
+  getServoAccelerationFromLocalStorage,
+  setServoAccelerationToLocalStorage,
+} from "@/lib/servoSettings";
 
 // import { JointDetails } from "@/components/RobotLoader"; // <-- IMPORT JointDetails type
 type JointDetails = {
@@ -44,16 +48,6 @@ export type UpdateJointsSpeed = (
 
 export type RecordData = number[][]; // Array of arrays representing servo positions/speeds
 
-/**
- * Acceleration written to every position-mode servo on connect (STS3215
- * register 41, units of 100 steps/s^2, i.e. ~8.8 deg/s^2; 0 means unlimited).
- * Control modes stream a new target every ~33 ms, and with no acceleration
- * limit the servo starts and stops hard on each one, which shows as jitter.
- * Lower is smoother but lags more. The register lives in RAM, so it is lost on
- * power-off and written again on every connect.
- */
-const SERVO_ACCELERATION = 30;
-
 export function useRobotControl(
   initialJointDetails: JointDetails[],
   urdfInitJointAngles?: { [key: string]: number }
@@ -85,6 +79,14 @@ export function useRobotControl(
 
   // Store initial positions of servos
   const [initialPositions, setInitialPositions] = useState<number[]>([]);
+
+  // Servo acceleration (see lib/servoSettings.ts). The register lives in RAM,
+  // so it is lost on power-off; it is written once on every connect, and the
+  // panel only lets it change while disconnected.
+  const [acceleration, setAccelerationState] = useState(() =>
+    getServoAccelerationFromLocalStorage()
+  );
+  const accelerationRef = useRef(acceleration);
 
   useEffect(() => {
     setJointStates(
@@ -125,7 +127,7 @@ export function useRobotControl(
             try {
               await scsServoSDK.writeAcceleration(
                 jointDetails[i].servoId,
-                SERVO_ACCELERATION
+                accelerationRef.current
               );
             } catch (error) {
               // Not fatal: the servo still works, just without the smoothing.
@@ -161,6 +163,12 @@ export function useRobotControl(
       console.error("Failed to connect to the robot:", error);
     }
   }, [jointStates, jointDetails]);
+
+  const setAcceleration = useCallback((value: number) => {
+    accelerationRef.current = value;
+    setAccelerationState(value);
+    setServoAccelerationToLocalStorage(value);
+  }, []);
 
   // Disconnect from the robot
   const disconnectRobot = useCallback(async () => {
@@ -412,6 +420,9 @@ export function useRobotControl(
     updateJointSpeed,
     updateJointsSpeed,
     setJointDetails,
+    // Servo acceleration, written on connect
+    acceleration,
+    setAcceleration,
     // Recording functions
     isRecording,
     recordData,

@@ -18,6 +18,7 @@ import { panelStyle } from "@/components/playground/panelStyle";
 import { RobotConnectionHelpDialog } from "./RobotConnectionHelpDialog";
 import { ControlBadge } from "../ControlBadge";
 import type { ControlAuthority } from "@/hooks/useControlAuthority";
+import { MAX_SERVO_ACCELERATION, MIN_SERVO_ACCELERATION } from "@/lib/servoSettings";
 
 // const baudRate = 1000000; // Define baud rate for serial communication - Keep if needed elsewhere, remove if only for UI
 
@@ -39,6 +40,9 @@ type ControlPanelProps = {
   show?: boolean; // 新增 show 属性
   /** Keys, sliders and chat only reach the arm while manual control holds it. */
   control?: ControlAuthority;
+  /** Follower servo acceleration (register 41); written on connect. */
+  acceleration: number;
+  onAccelerationChange: (value: number) => void;
 };
 
 export function ControlPanel({
@@ -55,6 +59,8 @@ export function ControlPanel({
   keyboardControlMap, // Destructure new prop
   compoundMovements, // Destructure new prop
   control,
+  acceleration,
+  onAccelerationChange,
 }: ControlPanelProps) {
   const [connectionStatus, setConnectionStatus] = useState<
     "idle" | "connecting" | "disconnecting"
@@ -153,6 +159,30 @@ export function ControlPanel({
             updateJointsSpeed={updateJointsSpeed} // Pass updateJointsSpeed to ContinuousJointsTable
           />
         )}
+
+        {/* Follower servo acceleration: whatever drives the arm, this shapes how it moves */}
+        <label
+          className={`mt-4 flex items-center gap-2 text-sm ${isConnected ? "opacity-50" : ""}`}
+          title={
+            "Servo acceleration limit (x100 steps/s², ~8.8°/s² per unit). Lower is smoother but lags more; 0 is no limit. " +
+            (isConnected ? "Disconnect to change it." : "Written to the servos on connect.")
+          }
+        >
+          <span className="shrink-0 text-zinc-400">Acceleration</span>
+          <input
+            type="range"
+            min={MIN_SERVO_ACCELERATION}
+            max={MAX_SERVO_ACCELERATION}
+            step={1}
+            value={acceleration}
+            onChange={(e) => onAccelerationChange(parseInt(e.target.value, 10))}
+            disabled={isConnected || connectionStatus !== "idle"}
+            className="flex-1 accent-sky-400 disabled:cursor-not-allowed"
+          />
+          <span className="w-16 shrink-0 text-right tabular-nums text-zinc-300">
+            {acceleration === 0 ? "no limit" : acceleration}
+          </span>
+        </label>
 
         {/* Connection Controls */}
         <div className="mt-4 flex justify-between items-center gap-2">

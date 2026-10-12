@@ -229,6 +229,8 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
     startRecording,
     stopRecording,
     clearRecordData,
+    acceleration,
+    setAcceleration,
   } = useRobotControl(jointDetails, urdfInitJointAngles);
 
   useEffect(() => {
@@ -540,6 +542,8 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
         disconnectRobot={disconnectRobot}
         keyboardControlMap={keyboardControlMap}
         compoundMovements={compoundMovements}
+        acceleration={acceleration}
+        onAccelerationChange={setAcceleration}
       />
       <ChatControl
         show={showChatControl}
